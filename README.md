@@ -1,7 +1,7 @@
 # synstructure
 
 > NOTE: What follows is an exerpt from the module level documentation. For full
-> delails read the docs on [docs.rs](https://docs.rs/synstructure/)
+> details read the docs on [docs.rs](https://docs.rs/synstructure/)
 
 This crate provides helper methods for matching against enum variants, and
 extracting bindings to each of the fields in the deriving Struct or Enum in
