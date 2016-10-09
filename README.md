@@ -25,7 +25,7 @@ fn sum_fields_derive(input: TokenStream) -> TokenStream {
     let source = input.to_string();
     let mut ast = syn::parse_macro_input(&source).unwrap();
 
-    let match_body = each_field(&mut ast, BindStyle::Ref, |bi| quote! {
+    let match_body = each_field(&mut ast, &BindStyle::Ref.into(), |bi| quote! {
         sum += #bi as i64;
     });
 
