@@ -15,7 +15,8 @@ fn alt_prefix() {
         assert_eq!(bindings[1].ident.as_ref(), "__foo_1");
         quote!("some_random_string")
     });
-    let e = concat!("A { a : ref __foo_0 ,  b : ref __foo_1 ,  }",
-                    "  => { \"some_random_string\"  }  ");
-    assert_eq!(&tokens.to_string(), e);
+    let e = quote! {
+        A{ a: ref __foo_0, b: ref __foo_1, } => { "some_random_string" }
+    }.to_string();
+    assert_eq!(tokens.to_string(), e);
 }

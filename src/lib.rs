@@ -153,6 +153,8 @@ impl<'a> ToTokens for BindingInfo<'a> {
 /// ```
 /// extern crate syn;
 /// extern crate synstructure;
+/// #[macro_use]
+/// extern crate quote;
 /// use synstructure::{match_pattern, BindStyle};
 ///
 /// fn main() {
@@ -162,8 +164,9 @@ impl<'a> ToTokens for BindingInfo<'a> {
 ///     } else { unreachable!() };
 ///
 ///     let (tokens, bindings) = match_pattern(&ast.ident, vd, &BindStyle::Ref.into());
-///     assert_eq!(&tokens.to_string(),
-///                "A { a : ref __binding_0 ,  b : ref __binding_1 ,  } ");
+///     assert_eq!(tokens.to_string(), quote! {
+///          A{ a: ref __binding_0, b: ref __binding_1, }
+///     }.to_string());
 ///     assert_eq!(bindings.len(), 2);
 ///     assert_eq!(&bindings[0].ident.to_string(), "__binding_0");
 ///     assert_eq!(&bindings[1].ident.to_string(), "__binding_1");
@@ -240,9 +243,9 @@ pub fn match_pattern<'a, N: ToTokens>(name: &N,
 ///         assert_eq!(bindings[1].ident.as_ref(), "__binding_1");
 ///         quote!("some_random_string")
 ///     });
-///     let e = concat!("A { a : ref __binding_0 ,  b : ref __binding_1 ,  }",
-///                     "  => { \"some_random_string\"  }  ");
-///     assert_eq!(&tokens.to_string(), e);
+///     assert_eq!(tokens.to_string(), quote! {
+///         A { a: ref __binding_0, b: ref __binding_1, } => { "some_random_string" }
+///     }.to_string());
 /// }
 /// ```
 pub fn match_substructs<F, T: ToTokens>(input: &mut MacroInput,
@@ -301,12 +304,13 @@ pub fn match_substructs<F, T: ToTokens>(input: &mut MacroInput,
 ///     let tokens = each_field(&mut ast, &BindStyle::Ref.into(), |bi| quote! {
 ///         println!("Saw: {:?}", #bi);
 ///     });
-///     let e = concat!("A { a : ref __binding_0 ,  b : ref __binding_1 ,  }  ",
-///                     "=> { ",
-///                     "{ println ! ( \"Saw: {:?}\" , __binding_0 ) ;  } ",
-///                     "{ println ! ( \"Saw: {:?}\" , __binding_1 ) ;  } ",
-///                     "( )   }  ");
-///     assert_eq!(&tokens.to_string(), e);
+///     assert_eq!(tokens.to_string(), quote! {
+///         A{ a: ref __binding_0, b: ref __binding_1, } => {
+///             { println!("Saw: {:?}", __binding_0); }
+///             { println!("Saw: {:?}", __binding_1); }
+///             ()
+///         }
+///     }.to_string());
 /// }
 /// ```
 pub fn each_field<F, T: ToTokens>(input: &mut MacroInput, options: &BindOpts, func: F) -> Tokens
