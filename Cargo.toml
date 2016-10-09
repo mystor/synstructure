@@ -1,0 +1,8 @@
+[package]
+name = "synstructure"
+version = "0.1.0"
+authors = ["Michael Layzell <michael@thelayzells.com>"]
+
+[dependencies]
+syn = "0.9"
+quote = "0.3"
