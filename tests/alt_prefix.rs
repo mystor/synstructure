@@ -6,10 +6,10 @@ use synstructure::{match_substructs, BindStyle, BindOpts};
 
 #[test]
 fn alt_prefix() {
-    let mut ast = syn::parse_macro_input("struct A { a: i32, b: i32 }").unwrap();
+    let ast = syn::parse_macro_input("struct A { a: i32, b: i32 }").unwrap();
 
     let opts = BindOpts::with_prefix(BindStyle::Ref, "__foo".into());
-    let tokens = match_substructs(&mut ast, &opts, |bindings| {
+    let tokens = match_substructs(&ast, &opts, |bindings| {
         assert_eq!(bindings.len(), 2);
         assert_eq!(bindings[0].ident.as_ref(), "__foo_0");
         assert_eq!(bindings[1].ident.as_ref(), "__foo_1");

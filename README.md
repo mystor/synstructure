@@ -23,18 +23,15 @@ type TokenStream = String; // XXX: Dummy to not depend on rustc_macro
 
 fn sum_fields_derive(input: TokenStream) -> TokenStream {
     let source = input.to_string();
-    let mut ast = syn::parse_macro_input(&source).unwrap();
+    let ast = syn::parse_macro_input(&source).unwrap();
 
-    let match_body = each_field(&mut ast, &BindStyle::Ref.into(), |bi| quote! {
+    let match_body = each_field(&ast, &BindStyle::Ref.into(), |bi| quote! {
         sum += #bi as i64;
     });
 
     let name = &ast.ident;
     let (impl_generics, ty_generics, where_clause) = ast.generics.split_for_impl();
     let result = quote! {
-        // Original struct unmodified
-        #ast
-
         impl #impl_generics ::sum_fields::SumFields for #name #ty_generics #where_clause {
             fn sum_fields(&self) -> i64 {
                 let mut sum = 0i64;

@@ -18,18 +18,15 @@
 //!
 //! fn sum_fields_derive(input: TokenStream) -> TokenStream {
 //!     let source = input.to_string();
-//!     let mut ast = syn::parse_macro_input(&source).unwrap();
+//!     let ast = syn::parse_macro_input(&source).unwrap();
 //!
-//!     let match_body = each_field(&mut ast, &BindStyle::Ref.into(), |bi| quote! {
+//!     let match_body = each_field(&ast, &BindStyle::Ref.into(), |bi| quote! {
 //!         sum += #bi as i64;
 //!     });
 //!
 //!     let name = &ast.ident;
 //!     let (impl_generics, ty_generics, where_clause) = ast.generics.split_for_impl();
 //!     let result = quote! {
-//!         // Original struct unmodified
-//!         #ast
-//!
 //!         impl #impl_generics ::sum_fields::SumFields for #name #ty_generics #where_clause {
 //!             fn sum_fields(&self) -> i64 {
 //!                 let mut sum = 0i64;
@@ -130,7 +127,7 @@ impl From<BindStyle> for BindOpts {
 #[derive(Debug)]
 pub struct BindingInfo<'a> {
     pub ident: Ident,
-    pub field: &'a mut Field,
+    pub field: &'a Field,
 }
 
 impl<'a> ToTokens for BindingInfo<'a> {
@@ -158,8 +155,8 @@ impl<'a> ToTokens for BindingInfo<'a> {
 /// use synstructure::{match_pattern, BindStyle};
 ///
 /// fn main() {
-///     let mut ast = syn::parse_macro_input("struct A { a: i32, b: i32 }").unwrap();
-///     let vd = if let syn::Body::Struct(ref mut vd) = ast.body {
+///     let ast = syn::parse_macro_input("struct A { a: i32, b: i32 }").unwrap();
+///     let vd = if let syn::Body::Struct(ref vd) = ast.body {
 ///         vd
 ///     } else { unreachable!() };
 ///
@@ -173,7 +170,7 @@ impl<'a> ToTokens for BindingInfo<'a> {
 /// }
 /// ```
 pub fn match_pattern<'a, N: ToTokens>(name: &N,
-                                      vd: &'a mut VariantData,
+                                      vd: &'a VariantData,
                                       options: &BindOpts)
                                       -> (Tokens, Vec<BindingInfo<'a>>) {
     let mut t = Tokens::new();
@@ -183,9 +180,9 @@ pub fn match_pattern<'a, N: ToTokens>(name: &N,
     name.to_tokens(&mut t);
     match *vd {
         VariantData::Unit => {}
-        VariantData::Tuple(ref mut fields) => {
+        VariantData::Tuple(ref fields) => {
             t.append("(");
-            for (i, field) in fields.iter_mut().enumerate() {
+            for (i, field) in fields.iter().enumerate() {
                 let ident: Ident = format!("{}_{}", options.prefix, i).into();
                 quote!(#binding #ident ,).to_tokens(&mut t);
                 matches.push(BindingInfo {
@@ -195,9 +192,9 @@ pub fn match_pattern<'a, N: ToTokens>(name: &N,
             }
             t.append(")");
         }
-        VariantData::Struct(ref mut fields) => {
+        VariantData::Struct(ref fields) => {
             t.append("{");
-            for (i, field) in fields.iter_mut().enumerate() {
+            for (i, field) in fields.iter().enumerate() {
                 let ident: Ident = format!("{}_{}", options.prefix, i).into();
                 {
                     let field_name = field.ident.as_ref().unwrap();
@@ -248,7 +245,7 @@ pub fn match_pattern<'a, N: ToTokens>(name: &N,
 ///     }.to_string());
 /// }
 /// ```
-pub fn match_substructs<F, T: ToTokens>(input: &mut MacroInput,
+pub fn match_substructs<F, T: ToTokens>(input: &MacroInput,
                                         options: &BindOpts,
                                         func: F)
                                         -> Tokens
@@ -257,17 +254,17 @@ pub fn match_substructs<F, T: ToTokens>(input: &mut MacroInput,
     let ident = &input.ident;
     // Generate patterns for matching against all of the variants
     let variants = match input.body {
-        Body::Enum(ref mut variants) => {
-            variants.iter_mut()
+        Body::Enum(ref variants) => {
+            variants.iter()
                 .map(|variant| {
                     let variant_ident = &variant.ident;
                     match_pattern(&quote!(#ident :: #variant_ident),
-                                  &mut variant.data,
+                                  &variant.data,
                                   options)
                 })
                 .collect()
         }
-        Body::Struct(ref mut vd) => vec![match_pattern(&ident, vd, options)],
+        Body::Struct(ref vd) => vec![match_pattern(&ident, vd, options)],
     };
 
     // Now that we have the patterns, generate the actual branches of the match
@@ -313,7 +310,7 @@ pub fn match_substructs<F, T: ToTokens>(input: &mut MacroInput,
 ///     }.to_string());
 /// }
 /// ```
-pub fn each_field<F, T: ToTokens>(input: &mut MacroInput, options: &BindOpts, func: F) -> Tokens
+pub fn each_field<F, T: ToTokens>(input: &MacroInput, options: &BindOpts, func: F) -> Tokens
     where F: Fn(BindingInfo) -> T
 {
     match_substructs(input, options, |infos| {
