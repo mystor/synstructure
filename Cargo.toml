@@ -1,6 +1,6 @@
 [package]
 name = "synstructure"
-version = "0.4.0"
+version = "0.4.1"
 authors = ["Michael Layzell <michael@thelayzells.com>"]
 
 description = "expand_substructure-like helpers for syn macros 1.1 derive macros"
@@ -12,5 +12,5 @@ keywords = ["syn", "macros", "derive", "expand_substructure", "enum"]
 
 
 [dependencies]
-syn = "0.10"
+syn = ">=0.10, <0.12"
 quote = "0.3"
