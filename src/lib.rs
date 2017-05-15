@@ -12,9 +12,10 @@
 //! extern crate synstructure;
 //! #[macro_use]
 //! extern crate quote;
-//! use synstructure::{each_field, BindStyle};
+//! extern crate proc_macro;
 //!
-//! type TokenStream = String; // XXX: Dummy to not depend on rustc_macro
+//! use synstructure::{each_field, BindStyle};
+//! use proc_macro::TokenStream;
 //!
 //! fn sum_fields_derive(input: TokenStream) -> TokenStream {
 //!     let source = input.to_string();
@@ -38,8 +39,8 @@
 //!
 //!     result.to_string().parse().unwrap()
 //! }
-//!
-//! fn main() {}
+//! #
+//! # fn main() {}
 //! ```
 //!
 //! For more example usage, consider investigating the `abomonation_derive` crate,
@@ -50,7 +51,7 @@ extern crate syn;
 extern crate quote;
 
 use std::borrow::Cow;
-use syn::{Body, Field, Ident, MacroInput, VariantData};
+use syn::{Body, Field, Ident, MacroInput, VariantData, Variant};
 use quote::{Tokens, ToTokens};
 
 /// The type of binding to use when generating a pattern.
@@ -141,10 +142,6 @@ impl<'a> ToTokens for BindingInfo<'a> {
 /// `BindingInfo` object for each of the bindings which were made. The `bind`
 /// parameter controls the type of binding which is made.
 ///
-/// The `BindingInfo` object holds a mutable reference into the original
-/// `VariantData`, which means that mutations will be reflected in the source
-/// object. This can be useful for removing attributes as they are used.
-///
 /// # Example
 ///
 /// ```
@@ -212,15 +209,93 @@ pub fn match_pattern<'a, N: ToTokens>(name: &N,
     (t, matches)
 }
 
+/// This method calls `func` once per variant in the struct or enum, and generates
+/// a series of match branches which will destructure a the input, and run the result
+/// of `func` once for each of the variants.
+///
+/// The second argument to `func` is a syn `Variant` object. This object is
+/// fabricated for struct-like `MacroInput` parameters.
+///
+/// # Example
+///
+/// ```
+/// extern crate syn;
+/// extern crate synstructure;
+/// #[macro_use]
+/// extern crate quote;
+/// use synstructure::{each_variant, BindStyle};
+///
+/// fn main() {
+///     let mut ast = syn::parse_macro_input("enum A { B(i32, i32), C }").unwrap();
+///
+///     let tokens = each_variant(&mut ast, &BindStyle::Ref.into(), |bindings, variant| {
+///         let name_str = variant.ident.as_ref();
+///         if name_str == "B" {
+///             assert_eq!(bindings.len(), 2);
+///             assert_eq!(bindings[0].ident.as_ref(), "__binding_0");
+///             assert_eq!(bindings[1].ident.as_ref(), "__binding_1");
+///         } else {
+///             assert_eq!(name_str, "C");
+///             assert_eq!(bindings.len(), 0);
+///         }
+///         quote!(#name_str)
+///     });
+///     assert_eq!(tokens.to_string(), quote! {
+///         A::B(ref __binding_0, ref __binding_1,) => { "B" }
+///         A::C => { "C" }
+///     }.to_string());
+/// }
+/// ```
+pub fn each_variant<F, T: ToTokens>(input: &MacroInput,
+                                    options: &BindOpts,
+                                    func: F)
+                                    -> Tokens
+    where F: Fn(Vec<BindingInfo>, &Variant) -> T {
+    let ident = &input.ident;
+
+    let struct_variant;
+    // Generate patterns for matching against all of the variants
+    let variants = match input.body {
+        Body::Enum(ref variants) => {
+            variants.iter()
+                .map(|variant| {
+                    let variant_ident = &variant.ident;
+                    let (pat, bindings) = match_pattern(&quote!(#ident :: #variant_ident),
+                                                        &variant.data,
+                                                        options);
+                    (pat, bindings, variant)
+                })
+                .collect()
+        }
+        Body::Struct(ref vd) => {
+            struct_variant = Variant {
+                ident: ident.clone(),
+                attrs: input.attrs.clone(),
+                data: vd.clone(),
+                discriminant: None,
+            };
+
+            let (pat, bindings) = match_pattern(&ident, &vd, options);
+            vec![(pat, bindings, &struct_variant)]
+        }
+    };
+
+    // Now that we have the patterns, generate the actual branches of the match
+    // expression
+    let mut t = Tokens::new();
+    for (pat, bindings, variant) in variants {
+        let body = func(bindings, variant);
+        quote!(#pat => { #body }).to_tokens(&mut t);
+    }
+
+    t
+}
+
 /// This method generates a match branch for each of the substructures of the
 /// given `MacroInput`. It will call `func` for each of these substructures,
 /// passing in the bindings which were made for each of the fields in the
 /// substructure. The return value of `func` is then used as the value of each
 /// branch
-///
-/// The `BindingInfo` object holds a mutable reference into the original
-/// `MacroInput`, which means that mutations will be reflected in the source
-/// object. This can be useful for removing attributes as they are used.
 ///
 /// # Example
 ///
@@ -251,40 +326,12 @@ pub fn match_substructs<F, T: ToTokens>(input: &MacroInput,
                                         -> Tokens
     where F: Fn(Vec<BindingInfo>) -> T
 {
-    let ident = &input.ident;
-    // Generate patterns for matching against all of the variants
-    let variants = match input.body {
-        Body::Enum(ref variants) => {
-            variants.iter()
-                .map(|variant| {
-                    let variant_ident = &variant.ident;
-                    match_pattern(&quote!(#ident :: #variant_ident),
-                                  &variant.data,
-                                  options)
-                })
-                .collect()
-        }
-        Body::Struct(ref vd) => vec![match_pattern(&ident, vd, options)],
-    };
-
-    // Now that we have the patterns, generate the actual branches of the match
-    // expression
-    let mut t = Tokens::new();
-    for (pat, bindings) in variants {
-        let body = func(bindings);
-        quote!(#pat => { #body }).to_tokens(&mut t);
-    }
-
-    t
+    each_variant(input, options, |bindings, _| func(bindings))
 }
 
 /// This method calls `func` once per field in the struct or enum, and generates
 /// a series of match branches which will destructure match argument, and run
 /// the result of `func` once on each of the bindings.
-///
-/// The `BindingInfo` object holds a mutable reference into the original
-/// `MacroInput`, which means that mutations will be reflected in the source
-/// object. This can be useful for removing attributes as they are used.
 ///
 /// # Example
 ///
@@ -313,11 +360,11 @@ pub fn match_substructs<F, T: ToTokens>(input: &MacroInput,
 pub fn each_field<F, T: ToTokens>(input: &MacroInput, options: &BindOpts, func: F) -> Tokens
     where F: Fn(BindingInfo) -> T
 {
-    match_substructs(input, options, |infos| {
+    each_variant(input, options, |bindings, _| {
         let mut t = Tokens::new();
-        for info in infos {
+        for binding in bindings {
             t.append("{");
-            func(info).to_tokens(&mut t);
+            func(binding).to_tokens(&mut t);
             t.append("}");
         }
         quote!(()).to_tokens(&mut t);
