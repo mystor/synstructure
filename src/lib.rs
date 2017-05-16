@@ -248,9 +248,9 @@ pub fn match_pattern<'a, N: ToTokens>(name: &N,
 /// ```
 pub fn each_variant<F, T: ToTokens>(input: &MacroInput,
                                     options: &BindOpts,
-                                    func: F)
+                                    mut func: F)
                                     -> Tokens
-    where F: Fn(Vec<BindingInfo>, &Variant) -> T {
+    where F: FnMut(Vec<BindingInfo>, &Variant) -> T {
     let ident = &input.ident;
 
     let struct_variant;
@@ -322,9 +322,9 @@ pub fn each_variant<F, T: ToTokens>(input: &MacroInput,
 /// ```
 pub fn match_substructs<F, T: ToTokens>(input: &MacroInput,
                                         options: &BindOpts,
-                                        func: F)
+                                        mut func: F)
                                         -> Tokens
-    where F: Fn(Vec<BindingInfo>) -> T
+    where F: FnMut(Vec<BindingInfo>) -> T
 {
     each_variant(input, options, |bindings, _| func(bindings))
 }
@@ -357,8 +357,8 @@ pub fn match_substructs<F, T: ToTokens>(input: &MacroInput,
 ///     }.to_string());
 /// }
 /// ```
-pub fn each_field<F, T: ToTokens>(input: &MacroInput, options: &BindOpts, func: F) -> Tokens
-    where F: Fn(BindingInfo) -> T
+pub fn each_field<F, T: ToTokens>(input: &MacroInput, options: &BindOpts, mut func: F) -> Tokens
+    where F: FnMut(BindingInfo) -> T
 {
     each_variant(input, options, |bindings, _| {
         let mut t = Tokens::new();
