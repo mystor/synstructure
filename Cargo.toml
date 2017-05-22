@@ -13,4 +13,4 @@ keywords = ["syn", "macros", "derive", "expand_substructure", "enum"]
 
 [dependencies]
 syn = "0.11"
-quote = "0.3"
+quote = "0.3.15"

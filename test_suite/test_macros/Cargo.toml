@@ -1,0 +1,12 @@
+[package]
+name = "test_macros"
+version = "0.1.0"
+authors = ["Michael Layzell <michael@thelayzells.com>"]
+
+[lib]
+proc-macro = true
+
+[dependencies]
+synstructure = { path = "../../" }
+syn = "0.11"
+quote = "0.3.15"
