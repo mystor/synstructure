@@ -162,12 +162,11 @@ extern crate syn;
 #[macro_use]
 extern crate quote;
 
-use syn::{Body, Field, Ident, DeriveInput, VariantData, WherePredicate,
-          WhereBoundPredicate, Ty, TyParamBound, PolyTraitRef,
-          TraitBoundModifier, Path, Attribute, ConstExpr};
+use syn::{Attribute, Body, ConstExpr, DeriveInput, Field, Ident, Path, PolyTraitRef,
+          TraitBoundModifier, Ty, TyParamBound, VariantData, WhereBoundPredicate, WherePredicate};
 use syn::visit::{self, Visitor};
 
-use quote::{Tokens, ToTokens};
+use quote::{ToTokens, Tokens};
 
 /// The type of binding to use when generating a pattern.
 #[derive(Debug, Copy, Clone)]
@@ -252,7 +251,11 @@ impl<'a> BindingInfo<'a> {
     /// # }
     /// ```
     pub fn pat(&self) -> Tokens {
-        let BindingInfo{ ref binding, ref style, .. } = *self;
+        let BindingInfo {
+            ref binding,
+            ref style,
+            ..
+        } = *self;
         quote!(#style #binding)
     }
 }
@@ -282,16 +285,17 @@ impl<'a> VariantInfo<'a> {
     fn new(ast: VariantAst<'a>, prefix: Option<&'a Ident>) -> Self {
         let bindings = match *ast.data {
             VariantData::Unit => vec![],
-            VariantData::Tuple(ref fields) |
-            VariantData::Struct(ref fields) => {
-                fields.iter().enumerate().map(|(i, field)| {
+            VariantData::Tuple(ref fields) | VariantData::Struct(ref fields) => fields
+                .iter()
+                .enumerate()
+                .map(|(i, field)| {
                     BindingInfo {
                         binding: format!("__binding_{}", i).into(),
                         style: BindStyle::Ref,
                         field: field,
                     }
-                }).collect::<Vec<_>>()
-            }
+                })
+                .collect::<Vec<_>>(),
         };
 
         VariantInfo {
@@ -475,12 +479,10 @@ impl<'a> VariantInfo<'a> {
         R: ToTokens,
     {
         let pat = self.pat();
-        let body = self.bindings
-            .iter()
-            .fold(quote!(#init), |i, bi| {
-                let r = f(i, bi);
-                quote!(#r)
-            });
+        let body = self.bindings.iter().fold(quote!(#init), |i, bi| {
+            let r = f(i, bi);
+            quote!(#r)
+        });
         quote!(#pat => { #body })
     }
 
@@ -527,7 +529,8 @@ impl<'a> VariantInfo<'a> {
     /// # }
     /// ```
     pub fn filter<F>(&mut self, f: F) -> &mut Self
-        where F: FnMut(&BindingInfo) -> bool
+    where
+        F: FnMut(&BindingInfo) -> bool,
     {
         let before_len = self.bindings.len();
         self.bindings.retain(f);
@@ -584,7 +587,8 @@ impl<'a> VariantInfo<'a> {
     /// # }
     /// ```
     pub fn bind_with<F>(&mut self, mut f: F) -> &mut Self
-        where F: FnMut(&BindingInfo) -> BindStyle
+    where
+        F: FnMut(&BindingInfo) -> BindStyle,
     {
         for binding in &mut self.bindings {
             binding.style = f(&binding);
@@ -634,7 +638,8 @@ impl<'a> VariantInfo<'a> {
     /// # }
     /// ```
     pub fn binding_name<F>(&mut self, mut f: F) -> &mut Self
-        where F: FnMut(&Field, usize) -> Ident
+    where
+        F: FnMut(&Field, usize) -> Ident,
     {
         for (it, binding) in self.bindings.iter_mut().enumerate() {
             binding.binding = f(binding.field, it);
@@ -656,25 +661,32 @@ impl<'a> Structure<'a> {
     /// `DeriveInput`.
     pub fn new(ast: &'a DeriveInput) -> Self {
         let variants = match ast.body {
-            Body::Enum(ref variants) => {
-                variants.iter().map(|v| {
-                    VariantInfo::new(VariantAst {
-                        ident: &v.ident,
-                        attrs: &v.attrs,
-                        data: &v.data,
-                        discriminant: &v.discriminant,
-                    }, Some(&ast.ident))
-                }).collect::<Vec<_>>()
-            }
+            Body::Enum(ref variants) => variants
+                .iter()
+                .map(|v| {
+                    VariantInfo::new(
+                        VariantAst {
+                            ident: &v.ident,
+                            attrs: &v.attrs,
+                            data: &v.data,
+                            discriminant: &v.discriminant,
+                        },
+                        Some(&ast.ident),
+                    )
+                })
+                .collect::<Vec<_>>(),
             Body::Struct(ref vd) => {
                 static NONE_DISCRIMINANT: Option<ConstExpr> = None;
                 vec![
-                    VariantInfo::new(VariantAst {
-                        ident: &ast.ident,
-                        attrs: &ast.attrs,
-                        data: &vd,
-                        discriminant: &NONE_DISCRIMINANT,
-                    }, None)
+                    VariantInfo::new(
+                        VariantAst {
+                            ident: &ast.ident,
+                            attrs: &ast.attrs,
+                            data: &vd,
+                            discriminant: &NONE_DISCRIMINANT,
+                        },
+                        None,
+                    ),
                 ]
             }
         };
@@ -744,7 +756,7 @@ impl<'a> Structure<'a> {
     /// # }
     /// ```
     pub fn each<F, R>(&self, mut f: F) -> Tokens
-        where
+    where
         F: FnMut(&BindingInfo) -> R,
         R: ToTokens,
     {
@@ -796,8 +808,8 @@ impl<'a> Structure<'a> {
     /// );
     /// # }
     /// ```
-    pub fn fold<F, I, R>(&self, init: I, mut f: F) ->  Tokens
-        where
+    pub fn fold<F, I, R>(&self, init: I, mut f: F) -> Tokens
+    where
         F: FnMut(Tokens, &BindingInfo) -> R,
         I: ToTokens,
         R: ToTokens,
@@ -852,7 +864,7 @@ impl<'a> Structure<'a> {
     /// # }
     /// ```
     pub fn each_variant<F, R>(&self, mut f: F) -> Tokens
-        where
+    where
         F: FnMut(&VariantInfo) -> R,
         R: ToTokens,
     {
@@ -909,7 +921,8 @@ impl<'a> Structure<'a> {
     /// # }
     /// ```
     pub fn filter<F>(&mut self, mut f: F) -> &mut Self
-        where F: FnMut(&BindingInfo) -> bool
+    where
+        F: FnMut(&BindingInfo) -> bool,
     {
         for variant in &mut self.variants {
             variant.filter(&mut f);
@@ -956,7 +969,8 @@ impl<'a> Structure<'a> {
     /// # }
     /// ```
     pub fn filter_variants<F>(&mut self, f: F) -> &mut Self
-        where F: FnMut(&VariantInfo) -> bool
+    where
+        F: FnMut(&VariantInfo) -> bool,
     {
         let before_len = self.variants.len();
         self.variants.retain(f);
@@ -1013,7 +1027,8 @@ impl<'a> Structure<'a> {
     /// # }
     /// ```
     pub fn bind_with<F>(&mut self, mut f: F) -> &mut Self
-        where F: FnMut(&BindingInfo) -> BindStyle
+    where
+        F: FnMut(&BindingInfo) -> BindStyle,
     {
         for variant in &mut self.variants {
             variant.bind_with(&mut f);
@@ -1063,7 +1078,8 @@ impl<'a> Structure<'a> {
     /// # }
     /// ```
     pub fn binding_name<F>(&mut self, mut f: F) -> &mut Self
-        where F: FnMut(&Field, usize) -> Ident
+    where
+        F: FnMut(&Field, usize) -> Ident,
     {
         for variant in &mut self.variants {
             variant.binding_name(&mut f);
@@ -1140,7 +1156,12 @@ impl<'a> Structure<'a> {
 
         let mut btl = BoundTypeLocator {
             result: Vec::new(),
-            remaining: self.ast.generics.ty_params.iter().map(|p| &p.ident).collect(),
+            remaining: self.ast
+                .generics
+                .ty_params
+                .iter()
+                .map(|p| &p.ident)
+                .collect(),
         };
 
         for variant in &self.variants {
@@ -1168,7 +1189,7 @@ impl<'a> Structure<'a> {
                     trait_ref: path,
                 },
                 TraitBoundModifier::None,
-            )
+            ),
         ];
 
         for param in self.referenced_ty_params() {
@@ -1231,8 +1252,8 @@ impl<'a> Structure<'a> {
         let name = &self.ast.ident;
         let (impl_generics, ty_generics, where_clause) = self.ast.generics.split_for_impl();
 
-        let trait_path = syn::parse_path(path.as_ref())
-            .expect("`path` argument must be a valid rust path");
+        let trait_path =
+            syn::parse_path(path.as_ref()).expect("`path` argument must be a valid rust path");
 
         let mut where_clause = where_clause.clone();
         self.add_trait_bounds(trait_path.clone(), &mut where_clause.predicates);
@@ -1257,8 +1278,8 @@ impl<'a> Structure<'a> {
         let name = &self.ast.ident;
         let (impl_generics, ty_generics, where_clause) = self.ast.generics.split_for_impl();
 
-        let trait_path = syn::parse_path(path.as_ref())
-            .expect("`path` argument must be a valid rust path");
+        let trait_path =
+            syn::parse_path(path.as_ref()).expect("`path` argument must be a valid rust path");
 
         quote! {
             impl #impl_generics #trait_path for #name #ty_generics #where_clause {
