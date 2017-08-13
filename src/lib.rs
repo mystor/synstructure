@@ -165,6 +165,7 @@ extern crate quote;
 use syn::{Body, Field, Ident, DeriveInput, VariantData, WherePredicate,
           WhereBoundPredicate, Ty, TyParamBound, PolyTraitRef,
           TraitBoundModifier, Path, Attribute, ConstExpr};
+use syn::visit::Visitor;
 
 use quote::{Tokens, ToTokens};
 
@@ -1073,6 +1074,11 @@ impl<'a> Structure<'a> {
     /// Returns a list of the type parameters which are refrenced in the types
     /// of non-filtered fields / variants.
     ///
+    /// # Caveat
+    ///
+    /// If a type parameter is only used within a type macro expansion, it will
+    /// not be detected and thus not be bound.
+    ///
     /// # Example
     /// ```
     /// # #[macro_use] extern crate quote;
@@ -1097,28 +1103,38 @@ impl<'a> Structure<'a> {
     /// # }
     /// ```
     pub fn referenced_ty_params(&self) -> Vec<&'a Ident> {
+        // Helper type. Discovers all identifiers inside of the visited type,
+        // and calls a callback with them.
+        struct BoundTypeLocator<F>(F) where F: FnMut(&Ident);
+        impl<F> Visitor for BoundTypeLocator<F>
+            where F: FnMut(&Ident)
+        {
+            fn visit_ident(&mut self, id: &Ident) {
+                self.0(id);
+            }
+
+            // XXX: Handle type macros better?
+        }
+
         let mut result = Vec::new();
         let mut v: Vec<_> =
             self.ast.generics.ty_params.iter().map(|p| &p.ident).collect();
+
         for variant in &self.variants {
             for binding in &variant.bindings {
-                // XXX: Match nested types
-                match binding.field.ty {
-                    Ty::Path(None, Path {
-                        global: false,
-                        ref segments,
-                    }) if segments.len() == 1 => {
-                        let id = &segments[0].ident;
-                        let before_len = v.len();
-                        v.retain(|&i| i != id);
-                        if v.len() != before_len {
-                            result.push(id);
-                        }
+                BoundTypeLocator(|id| v.retain(|&i| {
+                    if i == id {
+                        // NOTE: Push `i` rather than `id` otherwise
+                        // lifetimes don't work out.
+                        result.push(i);
+                        false
+                    } else {
+                        true
                     }
-                    _ => {}
-                }
+                })).visit_ty(&binding.field.ty);
             }
         }
+
         result
     }
 
@@ -1169,7 +1185,7 @@ impl<'a> Structure<'a> {
     /// "#).unwrap();
     /// let mut s = Structure::new(&di);
     ///
-    /// s.filter_variants(|v| v.ast().ident != "C");
+    /// s.filter_variants(|v| v.ast().ident != "B");
     ///
     /// assert_eq!(
     ///     s.bound_impl("::krate::Trait", quote!{
@@ -1177,7 +1193,7 @@ impl<'a> Structure<'a> {
     ///     }),
     ///     quote!{
     ///         impl<T, U> ::krate::Trait for A<T, U>
-    ///             where T: ::krate::Trait
+    ///             where U: ::krate::Trait
     ///         {
     ///             fn a() {}
     ///         }

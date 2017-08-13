@@ -12,5 +12,5 @@ keywords = ["syn", "macros", "derive", "expand_substructure", "enum"]
 
 
 [dependencies]
-syn = "0.11"
+syn = { version = "0.11", features = ["visit"] }
 quote = "0.3.15"
