@@ -165,7 +165,7 @@ extern crate quote;
 use syn::{Body, Field, Ident, DeriveInput, VariantData, WherePredicate,
           WhereBoundPredicate, Ty, TyParamBound, PolyTraitRef,
           TraitBoundModifier, Path, Attribute, ConstExpr};
-use syn::visit::Visitor;
+use syn::visit::{self, Visitor};
 
 use quote::{Tokens, ToTokens};
 
@@ -1076,8 +1076,9 @@ impl<'a> Structure<'a> {
     ///
     /// # Caveat
     ///
-    /// If a type parameter is only used within a type macro expansion, it will
-    /// not be detected and thus not be bound.
+    /// If the method contains any macros in type position, all parameters will
+    /// be considered bound. This is because we cannot determine which type
+    /// parameters are bound by type macros.
     ///
     /// # Example
     /// ```
@@ -1105,24 +1106,17 @@ impl<'a> Structure<'a> {
     pub fn referenced_ty_params(&self) -> Vec<&'a Ident> {
         // Helper type. Discovers all identifiers inside of the visited type,
         // and calls a callback with them.
-        struct BoundTypeLocator<F>(F) where F: FnMut(&Ident);
-        impl<F> Visitor for BoundTypeLocator<F>
-            where F: FnMut(&Ident)
-        {
-            fn visit_ident(&mut self, id: &Ident) {
-                self.0(id);
-            }
-
-            // XXX: Handle type macros better?
+        struct BoundTypeLocator<'a> {
+            result: Vec<&'a Ident>,
+            remaining: Vec<&'a Ident>,
         }
 
-        let mut result = Vec::new();
-        let mut v: Vec<_> =
-            self.ast.generics.ty_params.iter().map(|p| &p.ident).collect();
-
-        for variant in &self.variants {
-            for binding in &variant.bindings {
-                BoundTypeLocator(|id| v.retain(|&i| {
+        impl<'a> Visitor for BoundTypeLocator<'a> {
+            fn visit_ident(&mut self, id: &Ident) {
+                // NOTE: We need to borrow result here explicitly otherwise the
+                // lambda captures all of `self` mutably.
+                let result = &mut self.result;
+                self.remaining.retain(|&i| {
                     if i == id {
                         // NOTE: Push `i` rather than `id` otherwise
                         // lifetimes don't work out.
@@ -1131,15 +1125,41 @@ impl<'a> Structure<'a> {
                     } else {
                         true
                     }
-                })).visit_ty(&binding.field.ty);
+                });
+            }
+
+            fn visit_ty(&mut self, ty: &Ty) {
+                // If we see a type macro, we can't know what type parameters it
+                // might be binding, so we presume that it binds all of them.
+                if let Ty::Mac(_) = *ty {
+                    self.result.extend(self.remaining.drain(..));
+                }
+                visit::walk_ty(self, ty);
             }
         }
 
-        result
+        let mut btl = BoundTypeLocator {
+            result: Vec::new(),
+            remaining: self.ast.generics.ty_params.iter().map(|p| &p.ident).collect(),
+        };
+
+        for variant in &self.variants {
+            for binding in &variant.bindings {
+                btl.visit_ty(&binding.field.ty);
+            }
+        }
+
+        btl.result
     }
 
     /// Add trait bounds for a trait with the given path for each type parmaeter
     /// referenced in the types of non-filtered fields.
+    ///
+    /// # Caveat
+    ///
+    /// If the method contains any macros in type position, all parameters will
+    /// be considered bound. This is because we cannot determine which type
+    /// parameters are bound by type macros.
     pub fn add_trait_bounds(&self, path: Path, preds: &mut Vec<WherePredicate>) {
         let bounds = vec![
             TyParamBound::Trait(
@@ -1165,6 +1185,12 @@ impl<'a> Structure<'a> {
     ///
     /// This method also adds where clauses to the impl requiring that all
     /// referenced type parmaeters implement the trait `path`.
+    ///
+    /// # Caveat
+    ///
+    /// If the method contains any macros in type position, all parameters will
+    /// be considered bound. This is because we cannot determine which type
+    /// parameters are bound by type macros.
     ///
     /// # Panics
     ///
