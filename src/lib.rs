@@ -168,6 +168,12 @@ use syn::visit::{self, Visitor};
 
 use quote::{ToTokens, Tokens};
 
+// NOTE: This module has documentation hidden, as it only exports macros (which
+// always appear in the root of the crate) and helper methods / re-exports used
+// in the implementation of those macros.
+#[doc(hidden)]
+pub mod macros;
+
 /// The type of binding to use when generating a pattern.
 #[derive(Debug, Copy, Clone)]
 pub enum BindStyle {
