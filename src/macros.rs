@@ -54,15 +54,8 @@ pub mod quote {
 #[macro_export]
 macro_rules! decl_derive {
     ([$derives:ident $($derive_t:tt)*] $name:ident($($in:ident)*) $body:expr) => {
-        // XXX: Implementation module - contains the implementation of the
-        // derive in question. This is used by the testing macros to allow
-        // invoking the custom derive without creating TokenStreams.
-        mod $name {
-            pub extern crate proc_macro;
-            pub fn imp($($in)*: $crate::Structure) -> $crate::macros::quote::Tokens {
-                $body
-            }
-        }
+        // Create the decl_derive internal module.
+        decl_derive_mod!($name($($in)*) $body);
 
         // Wrapper function, parses input and output to custom derive to a
         // useful form.
@@ -78,6 +71,34 @@ macro_rules! decl_derive {
                                 ")]`"))
         }
     }
+}
+
+// Internal implementation detail. used to implement decl_derive, and exposed
+// separately for use within doctests within synstructure.
+//
+// This method includes `decl_derive!(..)` so it can be used as though it was
+// that type in doctests.
+#[doc(hidden)]
+#[macro_export]
+macro_rules! decl_derive_mod {
+    // Helper matcher. Allows for a fake `decl_derive!` invocation to be placed
+    // inside of the `decl_derive_mod!` invocation, which is used by
+    // `synstructure` for doctests, where we cannot use `decl_derive!` as the
+    // generated crate is not a `proc_macro` crate.
+    (decl_derive!($arglist:tt $($tt:tt)*);) => {
+        decl_derive_mod!{$($tt)*}
+    };
+    ($name:ident($($in:ident)*) $body:expr) => {
+        // XXX: Implementation module - contains the implementation of the
+        // derive in question. This is used by the testing macros to allow
+        // invoking the custom derive without creating TokenStreams.
+        mod $name {
+            pub extern crate proc_macro;
+            pub fn imp($($in)*: $crate::Structure) -> $crate::macros::quote::Tokens {
+                $body
+            }
+        }
+    };
 }
 
 /// Run a test on a custom derive. This macro expands both the original struct

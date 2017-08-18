@@ -7,152 +7,126 @@
 //!
 //! # Example: `WalkFields`
 //! ```
-//! # extern crate syn;
-//! # extern crate synstructure;
-//! # #[macro_use]
-//! # extern crate quote;
-//! # extern crate proc_macro;
-//! # use synstructure::Structure;
-//! # type TokenStream = String;
+//! # #[macro_use] extern crate synstructure;
+//! # #[macro_use] extern crate quote;
 //! /*
 //!  * Trait
 //!  */
-//! # mod walkfields {
-//! pub trait WalkFields {
-//!     fn walk_field(&self, walk: &mut FnMut(&WalkFields));
+//! pub trait WalkFields: std::any::Any {
+//!     fn walk_fields(&self, walk: &mut FnMut(&WalkFields));
 //! }
-//! # impl WalkFields for i32 {
-//! # fn walk_field(&self, walk: &mut FnMut(&WalkFields)) {}
-//! # }
-//! # }
+//! impl WalkFields for i32 {
+//!     fn walk_fields(&self, walk: &mut FnMut(&WalkFields)) {}
+//! }
 //!
 //! /*
 //!  * Derive Implementation
 //!  */
-//! fn walkfields_derive(input: TokenStream) -> TokenStream {
-//!     let ast = syn::parse_derive_input(&input.to_string()).unwrap();
-//!     let s = Structure::new(&ast);
-//!
+//! # decl_derive_mod!(
+//! decl_derive!([WalkFields] walkfields_derive(s) {
 //!     let body = s.each(|bi| quote!{
 //!         walk(#bi)
 //!     });
 //!
-//!     s.bound_impl("::walkfields::WalkFields", quote!{
-//!         fn walk_field(&self, walk: &mut FnMut(&::walkfields::WalkFields)) {
+//!     s.bound_impl("::WalkFields", quote!{
+//!         fn walk_fields(&self, walk: &mut FnMut(&::WalkFields)) {
 //!             match *self { #body }
 //!         }
-//!     }).to_string().parse().unwrap()
-//! }
+//!     })
+//! });
+//! # );
 //!
-//! # fn main() {
 //! /*
 //!  * Test Case
 //!  */
-//! # macro_rules! aaa { ($i:ident, $($t:tt)*) => { $($t)* let $i = quote!($($t)*); } }
-//! # aaa!{i,
-//! # #[allow(dead_code)]
-//! enum A<T> {
-//!     B(i32, T),
-//!     C(i32),
-//! }
-//! # }
-//!
-//! /*
-//!  * Custom Derive Output
-//!  */
-//! # aaa!{o,
-//! impl<T> ::walkfields::WalkFields for A<T> where T: ::walkfields::WalkFields {
-//!     fn walk_field(&self, walk: &mut FnMut(&::walkfields::WalkFields)) {
-//!         match *self {
-//!             A::B(ref __binding_0, ref __binding_1,) => {
-//!                 { walk(__binding_0) }
-//!                 { walk(__binding_1) }
+//! fn main() {
+//!     test_derive! {
+//!         walkfields_derive {
+//!             enum A<T> {
+//!                 B(i32, T),
+//!                 C(i32),
 //!             }
-//!             A::C(ref __binding_0,) => {
-//!                 { walk(__binding_0) }
+//!         }
+//!         expands to {
+//!             impl<T> ::WalkFields for A<T> where T: ::WalkFields {
+//!                 fn walk_fields(&self, walk: &mut FnMut(&::WalkFields)) {
+//!                     match *self {
+//!                         A::B(ref __binding_0, ref __binding_1,) => {
+//!                             { walk(__binding_0) }
+//!                             { walk(__binding_1) }
+//!                         }
+//!                         A::C(ref __binding_0,) => {
+//!                             { walk(__binding_0) }
+//!                         }
+//!                     }
+//!                 }
 //!             }
 //!         }
 //!     }
 //! }
-//! # }
-//! # assert_eq!(walkfields_derive(i.to_string()), o.to_string());
-//! # }
 //! ```
 //!
 //! # Example: `Interest`
 //! ```
-//! # extern crate syn;
-//! # extern crate synstructure;
-//! # #[macro_use]
-//! # extern crate quote;
-//! # extern crate proc_macro;
-//! # use synstructure::Structure;
-//! # type TokenStream = String;
+//! # #[macro_use] extern crate synstructure;
+//! # #[macro_use] extern crate quote;
 //! /*
 //!  * Trait
 //!  */
-//! # mod interest {
 //! pub trait Interest {
 //!     fn interesting(&self) -> bool;
 //! }
-//! # impl Interest for i32 {
-//! # fn interesting(&self) -> bool { false }
-//! # }
-//! # }
+//! impl Interest for i32 {
+//!     fn interesting(&self) -> bool { *self > 0 }
+//! }
 //!
 //! /*
 //!  * Derive Implementation
 //!  */
-//! fn interest_derive(input: TokenStream) -> TokenStream {
-//!     let ast = syn::parse_derive_input(&input.to_string()).unwrap();
-//!     let s = Structure::new(&ast);
-//!
+//! # decl_derive_mod!(
+//! decl_derive!([Interest] interest_derive(mut s) {
 //!     let body = s.fold(false, |acc, bi| quote!{
-//!         #acc || ::interest::Interest::interesting(#bi)
+//!         #acc || ::Interest::interesting(#bi)
 //!     });
 //!
-//!     s.bound_impl("::interest::Interest", quote!{
+//!     s.bound_impl("::Interest", quote!{
 //!         fn interesting(&self) -> bool {
 //!             match *self {
 //!                 #body
 //!             }
 //!         }
-//!     }).as_str().parse().unwrap()
-//! }
+//!     })
+//! });
+//! # );
 //!
-//! # fn main() {
 //! /*
 //!  * Test Case
 //!  */
-//! # macro_rules! aaa { ($i:ident, $($t:tt)*) => { $($t)* let $i = quote!($($t)*); } }
-//! # aaa!{i,
-//! # #[allow(dead_code)]
-//! enum A<T> {
-//!     B(i32, T),
-//!     C(i32),
-//! }
-//! # }
-//!
-//! /*
-//!  * Custom Derive Output
-//!  */
-//! # aaa!{o,
-//! impl<T> ::interest::Interest for A<T> where T: ::interest::Interest {
-//!     fn interesting(&self) -> bool {
-//!         match *self {
-//!             A::B(ref __binding_0, ref __binding_1,) => {
-//!                 false || ::interest::Interest::interesting(__binding_0) ||
-//!                     ::interest::Interest::interesting(__binding_1)
+//! fn main() {
+//!     test_derive!{
+//!         interest_derive {
+//!             enum A<T> {
+//!                 B(i32, T),
+//!                 C(i32),
 //!             }
-//!             A::C(ref __binding_0,) => {
-//!                 false || ::interest::Interest::interesting(__binding_0)
+//!         }
+//!         expands to {
+//!             impl<T> ::Interest for A<T> where T: ::Interest {
+//!                 fn interesting(&self) -> bool {
+//!                     match *self {
+//!                         A::B(ref __binding_0, ref __binding_1,) => {
+//!                             false || ::Interest::interesting(__binding_0) ||
+//!                                 ::Interest::interesting(__binding_1)
+//!                         }
+//!                         A::C(ref __binding_0,) => {
+//!                             false || ::Interest::interesting(__binding_0)
+//!                         }
+//!                     }
+//!                 }
 //!             }
 //!         }
 //!     }
 //! }
-//! # }
-//! # assert_eq!(interest_derive(i.to_string()), o.to_string());
-//! # }
 //! ```
 //!
 //! For more example usage, consider investigating the `abomonation_derive` crate,
