@@ -136,8 +136,8 @@ extern crate syn;
 #[macro_use]
 extern crate quote;
 
-use syn::{Attribute, Body, ConstExpr, DeriveInput, Field, Ident, Path, PolyTraitRef,
-          TraitBoundModifier, Ty, TyParamBound, VariantData, WhereBoundPredicate, WherePredicate};
+use syn::{Attribute, Body, ConstExpr, DeriveInput, Field, Ident, Ty, TyParamBound,
+          VariantData, WhereBoundPredicate, WherePredicate};
 use syn::visit::{self, Visitor};
 
 use quote::{ToTokens, Tokens};
@@ -149,7 +149,7 @@ use quote::{ToTokens, Tokens};
 pub mod macros;
 
 /// The type of binding to use when generating a pattern.
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub enum BindStyle {
     /// `x`
     Move,
@@ -181,7 +181,7 @@ impl ToTokens for BindStyle {
 ///
 /// This type supports `quote::ToTokens`, so can be directly used within the
 /// `quote!` macro. It expands to a reference to the matched field.
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct BindingInfo<'a> {
     /// The name which this BindingInfo will bind to.
     pub binding: Ident,
@@ -244,7 +244,7 @@ impl<'a> BindingInfo<'a> {
 /// are references rather than owned. When this is used as the AST for a real
 /// variant, this struct simply borrows the fields of the `syn` `Variant`,
 /// however this type may also be used as the sole variant for astruct.
-#[derive(Copy, Clone)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub struct VariantAst<'a> {
     pub ident: &'a Ident,
     pub attrs: &'a [Attribute],
@@ -254,6 +254,7 @@ pub struct VariantAst<'a> {
 
 /// A wrapper around a `syn` `DeriveInput`'s variant which provides utilities
 /// for destructuring `Variant`s with `match` expressions.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct VariantInfo<'a> {
     pub prefix: Option<&'a Ident>,
     bindings: Vec<BindingInfo<'a>>,
@@ -630,6 +631,7 @@ impl<'a> VariantInfo<'a> {
 
 /// A wrapper around a `syn` `DeriveInput` which provides utilities for creating
 /// custom derive trait implementations.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Structure<'a> {
     variants: Vec<VariantInfo<'a>>,
     omitted_variants: bool,
@@ -1161,22 +1163,12 @@ impl<'a> Structure<'a> {
     /// If the method contains any macros in type position, all parameters will
     /// be considered bound. This is because we cannot determine which type
     /// parameters are bound by type macros.
-    pub fn add_trait_bounds(&self, path: Path, preds: &mut Vec<WherePredicate>) {
-        let bounds = vec![
-            TyParamBound::Trait(
-                PolyTraitRef {
-                    bound_lifetimes: vec![],
-                    trait_ref: path,
-                },
-                TraitBoundModifier::None,
-            ),
-        ];
-
+    pub fn add_trait_bounds(&self, bound: &TyParamBound, preds: &mut Vec<WherePredicate>) {
         for param in self.referenced_ty_params() {
             preds.push(WherePredicate::BoundPredicate(WhereBoundPredicate {
                 bound_lifetimes: vec![],
                 bounded_ty: Ty::Path(None, param.clone().into()),
-                bounds: bounds.clone(),
+                bounds: vec![bound.clone()],
             }));
         }
     }
@@ -1195,7 +1187,7 @@ impl<'a> Structure<'a> {
     ///
     /// # Panics
     ///
-    /// Panics if the path string parameter is not a valid rust path.
+    /// Panics if the path string parameter is not a valid TyParamBound.
     ///
     /// # Example
     /// ```
@@ -1228,18 +1220,19 @@ impl<'a> Structure<'a> {
     /// );
     /// # }
     /// ```
-    pub fn bound_impl<P: AsRef<str>, B: ToTokens>(&self, path: P, body: B) -> Tokens {
+    pub fn bound_impl<P: AsRef<str>, B: ToTokens>(&self, bound: P, body: B) -> Tokens {
         let name = &self.ast.ident;
         let (impl_generics, ty_generics, where_clause) = self.ast.generics.split_for_impl();
 
-        let trait_path =
-            syn::parse_path(path.as_ref()).expect("`path` argument must be a valid rust path");
+        let bound =
+            syn::parse_ty_param_bound(bound.as_ref())
+            .expect("`bound` argument must be a valid rust trait bound");
 
         let mut where_clause = where_clause.clone();
-        self.add_trait_bounds(trait_path.clone(), &mut where_clause.predicates);
+        self.add_trait_bounds(&bound, &mut where_clause.predicates);
 
         quote! {
-            impl #impl_generics #trait_path for #name #ty_generics #where_clause {
+            impl #impl_generics #bound for #name #ty_generics #where_clause {
                 #body
             }
         }
@@ -1254,15 +1247,16 @@ impl<'a> Structure<'a> {
 
     /// This method is like `bound_impl` but doesn't add the additional bounds
     /// to the where clause.
-    pub fn unbound_impl<P: AsRef<str>, B: ToTokens>(&self, path: P, body: B) -> Tokens {
+    pub fn unbound_impl<P: AsRef<str>, B: ToTokens>(&self, bound: P, body: B) -> Tokens {
         let name = &self.ast.ident;
         let (impl_generics, ty_generics, where_clause) = self.ast.generics.split_for_impl();
 
-        let trait_path =
-            syn::parse_path(path.as_ref()).expect("`path` argument must be a valid rust path");
+        let bound =
+            syn::parse_ty_param_bound(bound.as_ref())
+            .expect("`bound` argument must be a valid rust trait bound");
 
         quote! {
-            impl #impl_generics #trait_path for #name #ty_generics #where_clause {
+            impl #impl_generics #bound for #name #ty_generics #where_clause {
                 #body
             }
         }
