@@ -10,6 +10,8 @@ readme = "README.md"
 license = "MIT"
 keywords = ["syn", "macros", "derive", "expand_substructure", "enum"]
 
+[features]
+simple-derive = []
 
 [dependencies]
 syn = { version = "0.11", features = ["visit"] }

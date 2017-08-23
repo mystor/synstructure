@@ -155,6 +155,11 @@ macro_rules! test_derive {
 /// in a future version. I'm not yet confident enough that this API is useful
 /// enough to warrant its complexity and inclusion in synstructure.
 ///
+/// # Note
+///
+/// This feature is implemented behind the `simple-derive` feature, and is only
+/// avaliable when that feature is enabled.
+///
 /// # Example
 /// ```ignore
 /// simple_derive! {
@@ -184,6 +189,7 @@ macro_rules! test_derive {
 ///     }
 /// }
 /// ```
+#[cfg(feature = "simple-derive")]
 #[macro_export]
 macro_rules! simple_derive {
     // entry point
