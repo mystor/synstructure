@@ -22,8 +22,7 @@
 //! /*
 //!  * Derive Implementation
 //!  */
-//! # decl_derive_mod!(
-//! decl_derive!([WalkFields] walkfields_derive(s) {
+//! fn walkfields_derive(s: synstructure::Structure) -> quote::Tokens {
 //!     let body = s.each(|bi| quote!{
 //!         walk(#bi)
 //!     });
@@ -33,7 +32,9 @@
 //!             match *self { #body }
 //!         }
 //!     })
-//! });
+//! }
+//! # const _IGNORE: &str = stringify!(
+//! decl_derive!([WalkFields] => walkfields_derive);
 //! # );
 //!
 //! /*
@@ -83,8 +84,7 @@
 //! /*
 //!  * Derive Implementation
 //!  */
-//! # decl_derive_mod!(
-//! decl_derive!([Interest] interest_derive(mut s) {
+//! fn interest_derive(mut s: synstructure::Structure) -> quote::Tokens {
 //!     let body = s.fold(false, |acc, bi| quote!{
 //!         #acc || ::Interest::interesting(#bi)
 //!     });
@@ -96,7 +96,9 @@
 //!             }
 //!         }
 //!     })
-//! });
+//! }
+//! # const _IGNORE: &str = stringify!(
+//! decl_derive!([Interest] => interest_derive);
 //! # );
 //!
 //! /*
@@ -135,6 +137,7 @@
 extern crate syn;
 #[macro_use]
 extern crate quote;
+extern crate proc_macro;
 
 use syn::{Attribute, Body, ConstExpr, DeriveInput, Field, Ident, Ty, TyParamBound,
           VariantData, WhereBoundPredicate, WherePredicate};

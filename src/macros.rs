@@ -13,90 +13,49 @@ pub mod quote {
     pub use quote::*; // For quote::Tokens
 }
 
-/// The `decl_derive!` macro declares a custom derive using synstructure's `Syn`
-/// argument. This macro has the internal implementation factored into a
-/// separate function such that it can be tested by the `test_derive!` method
-/// also provided by this crate.
+pub mod proc_macro {
+    pub use proc_macro::*; // For proc_macro::TokenStream
+}
+
+/// The `decl_derive!` macro declares a custom derive wrapper. It will parse the incoming TokenStream into a `synstructure::Structure` object, and pass it into the inner function.
+///
+/// Your inner function should have the following type:
+///
+/// ```
+/// # extern crate quote;
+/// # extern crate synstructure;
+/// fn derive(input: synstructure::Structure) -> quote::Tokens {
+///     // Your body here
+/// # unimplemented!()
+/// }
+/// ```
 ///
 /// # Usage
 ///
 /// ```ignore
-/// decl_derive!([Interesting, attributes(interesting_ignore)] derive_interesting(mut structure) {
-///     ...body
-/// })
-/// ```
-///
-/// This will generate something like:
-///
-/// ```ignore
-/// // The implementation module. This module contains re-exports of some useful
-/// // imported crates, as well as the core implementation function. This
-/// // function will is separate in this method so that it can be called by
-/// // tests generated with the `test_derive!` macro.
-/// mod derive_interesting {
-///     // The actual implementation of the custom derive. Your code will be
-///     // placed in the body of this function.
-///     pub fn imp(mut structure: ::synstructure::Structure) -> ::quote::Tokens {
-///         ..body
-///     }
+/// fn derive_interesting(mut input: synstructure::Structure) -> quote::Tokens {
+///     // Your body here
 /// }
-///
-/// // The publicly exposed procedural macro declaration. Parses the input
-/// // tokenstream, a nd parses the tokens returned from `imp` into a TokenStream.
-/// #[proc_macro_derive(Interesting, attributes(interesting_ignore))]
-/// pub fn derive_interesting(i: ::proc_macro::TokenStream) -> ::proc_macro::TokenStream {
-///     let parsed = ::syn::parse_derive_input(&i.to_string())
-///         .expect("Failed to parse input to `#[derive(Interesting)]`");
-///     derive_interesting::imp(::synstructure::Structure::new(&parsed)).parse()
-///         .expect("Failed to parse output from `#[derive(Interesting)]`")
-/// }
+/// decl_derive!([Interesting, attributes(interesting_ignore)] => derive_interesting);
 /// ```
 #[macro_export]
 macro_rules! decl_derive {
-    ([$derives:ident $($derive_t:tt)*] $name:ident($($in:ident)*) $body:expr) => {
-        // Create the decl_derive internal module.
-        decl_derive_mod!($name($($in)*) $body);
-
-        // Wrapper function, parses input and output to custom derive to a
-        // useful form.
+    // XXX: Switch to using this variant everywhere?
+    ([$derives:ident $($derive_t:tt)*] => $inner:path) => {
         #[proc_macro_derive($derives $($derive_t)*)]
-        pub fn $name(i: $name::proc_macro::TokenStream) -> $name::proc_macro::TokenStream {
+        #[allow(non_snake_case)]
+        pub fn $derives(
+            i: $crate::macros::proc_macro::TokenStream
+        ) -> $crate::macros::proc_macro::TokenStream
+        {
             let parsed = $crate::macros::syn::parse_derive_input(&i.to_string())
                 .expect(concat!("Failed to parse input to `#[derive(",
                                 stringify!($derives),
                                 ")]`"));
-            $name::imp($crate::Structure::new(&parsed)).parse()
+            $inner($crate::Structure::new(&parsed)).parse()
                 .expect(concat!("Failed to parse output from `#[derive(",
                                 stringify!($derives),
                                 ")]`"))
-        }
-    }
-}
-
-// Internal implementation detail. used to implement decl_derive, and exposed
-// separately for use within doctests within synstructure.
-//
-// This method includes `decl_derive!(..)` so it can be used as though it was
-// that type in doctests.
-#[doc(hidden)]
-#[macro_export]
-macro_rules! decl_derive_mod {
-    // Helper matcher. Allows for a fake `decl_derive!` invocation to be placed
-    // inside of the `decl_derive_mod!` invocation, which is used by
-    // `synstructure` for doctests, where we cannot use `decl_derive!` as the
-    // generated crate is not a `proc_macro` crate.
-    (decl_derive!($arglist:tt $($tt:tt)*);) => {
-        decl_derive_mod!{$($tt)*}
-    };
-    ($name:ident($($in:ident)*) $body:expr) => {
-        // XXX: Implementation module - contains the implementation of the
-        // derive in question. This is used by the testing macros to allow
-        // invoking the custom derive without creating TokenStreams.
-        mod $name {
-            pub extern crate proc_macro;
-            pub fn imp($($in)*: $crate::Structure) -> $crate::macros::quote::Tokens {
-                $body
-            }
         }
     };
 }
@@ -105,6 +64,11 @@ macro_rules! decl_derive_mod {
 /// and the expansion to ensure that they compile correctly, and confirms that
 /// feeding the original struct into the named derive will produce the written
 /// output.
+///
+/// You can add `no_build` to the end of the macro invocation to disable
+/// checking that the written code compiles. This is useful in contexts where
+/// the procedural macro cannot depend on the crate where it is used during
+/// tests.
 ///
 /// # Usage
 ///
@@ -135,25 +99,251 @@ macro_rules! decl_derive_mod {
 macro_rules! test_derive {
     ($name:path { $($i:tt)* } expands to { $($o:tt)* }) => {
         {
-            use $name as imp_mod;
-
             #[allow(dead_code)]
             fn ensure_compiles() {
                 $($i)*
                 $($o)*
             }
 
-            let i = stringify!{ $($i)* };
+            test_derive!($name { $($i)* } expands to { $($o)* } no_build);
+        }
+    };
+
+    ($name:path { $($i:tt)* } expands to { $($o:tt)* } no_build) => {
+        {
+            let i = stringify!( $($i)* );
             let parsed = $crate::macros::syn::parse_derive_input(i)
                 .expect(concat!("Failed to parse input to `#[derive(",
                                 stringify!($derives),
                                 ")]`"));
 
-            let o = stringify!( $($o)* ).replace("\n", " ");
+            // NOTE: These outputs can get quite long, so we'd like to avoid
+            // recursive macros like `quote!` for parsing them. Instead, we use
+            // stringify (which is inconsistent with whitespace), split on
+            // whitespace, and compare the lists of tokens.
+
+            let res = $name($crate::Structure::new(&parsed));
+            let expected = stringify!( $($o)* );
+
+            let res_toks = res.as_str()
+                .split(|ch: char| ch.is_whitespace())
+                .filter(|s: &&str| !s.is_empty())
+                .collect::<Vec<&str>>();
+
+            let exp_toks = expected
+                .split(|ch: char| ch.is_whitespace())
+                .filter(|s: &&str| !s.is_empty())
+                .collect::<Vec<&str>>();
+
             assert_eq!(
-                imp_mod::imp($crate::Structure::new(&parsed)).as_str(),
-                o
+                res_toks,
+                exp_toks
             )
+        }
+    };
+}
+
+/// A helper macro for declaring relatively straightforward derive
+/// implementations. It provides mechanisms for operating over structures
+/// performing modifications on each field etc.
+///
+/// This macro is a helper wrapper over decl_derive!.
+///
+/// # Warning
+///
+/// This is an unstable experimental macro API, which may be changed or removed
+/// in a future version. I'm not yet confident enough that this API is useful
+/// enough to warrant its complexity and inclusion in synstructure.
+///
+/// # Example
+/// ```ignore
+/// simple_derive! {
+///     // This macro implements the `Interesting` method exported by the `aa`
+///     // crate. It will explicitly add an `extern crate` invocation to import the
+///     // crate into the expanded context.
+///     derive(Interesting) impl ::aa::Interesting {
+///         // A "filter" block can be added. It evaluates its body with the (s)
+///         // variable bound to a mutable reference to the input `Structure`
+///         // object.
+///         //
+///         // This block can be used to perform general transformations, such as
+///         // filtering out fields which should be ignored by all methods and for
+///         // the purposes of binding type parameters.
+///         filter(s) {
+///             s.filter(|bi| bi.ast().ident != Some("a".into()));
+///         }
+///
+///         // This is an implementation of a method in the implemented crate. The
+///         // return value should be the series of match patterns to destructure
+///         // the `self` argument with.
+///         fn is_interesting(&self as s) -> bool {
+///             s.fold(false, |acc, bi| {
+///                 quote!(#acc || ::aa::Interesting::is_interesting(#bi))
+///             })
+///         }
+///     }
+/// }
+/// ```
+#[macro_export]
+macro_rules! simple_derive {
+    // entry point
+    (
+        derive($name:ident) $iname:ident impl $path:path { $($rest:tt)* }
+    ) => {
+        simple_derive!(@I [$name, $iname, $path] { $($rest)* } [] []);
+    };
+
+    // Adding a filter block
+    (
+        @I $opt:tt {
+            filter($s:ident) {
+                $($body:tt)*
+            }
+            $($rest:tt)*
+        } [$($done:tt)*] [$($filter:tt)*]
+    ) => {
+        simple_derive!(
+            @I $opt { $($rest)* } [$($done)*] [
+                $($filter)*
+                [
+                    st_name = $s,
+                    body = {
+                        $($body)*
+                    },
+                ]
+            ]
+        );
+    };
+
+    // &self bound method
+    (
+        @I $opt:tt {
+            fn $fn_name:ident (&self as $s:ident $($params:tt)*) $(-> $t:ty)* {
+                $($body:tt)*
+            }
+            $($rest:tt)*
+        } [$($done:tt)*] [$($filter:tt)*]
+    ) => {
+        simple_derive!(
+            @I $opt { $($rest)* } [
+                $($done)*
+                [
+                    st_name = $s,
+                    bind_style = Ref,
+                    body = { $($body)* },
+                    result = result,
+                    expanded = {
+                        fn $fn_name(&self $($params)*) $(-> $t)* {
+                            match *self { #result }
+                        }
+                    },
+                ]
+            ] [$($filter)*]
+        );
+    };
+
+    // &mut self bound method
+    (
+        @I $opt:tt {
+            fn $fn_name:ident (&mut self as $s:ident $($params:tt)*) $(-> $t:ty)* {
+                $($body:tt)*
+            }
+            $($rest:tt)*
+        } [$($done:tt)*] [$($filter:tt)*]
+    ) => {
+        simple_derive!(
+            @I $opt { $($rest)* } [
+                $($done)*
+                [
+                    st_name = $s,
+                    bind_style = RefMut,
+                    body = { $($body)* },
+                    result = result,
+                    expanded = {
+                        fn $fn_name(&mut self $($params)*) $(-> $t)* {
+                            match *self { #result }
+                        }
+                    },
+                ]
+            ] [$($filter)*]
+        );
+    };
+
+    // self bound method
+    (
+        @I $opt:tt {
+            fn $fn_name:ident (self as $s:ident $($params:tt)*) $(-> $t:ty)* {
+                $($body:tt)*
+            }
+            $($rest:tt)*
+        } [$($done:tt)*] [$($filter:tt)*]
+    ) => {
+        simple_derive!(
+            @I $opt { $($rest)* } [
+                $($done)*
+                [
+                    st_name = $s,
+                    bind_style = Move,
+                    body = { $($body)* },
+                    result = result,
+                    expanded = {
+                        fn $fn_name(self $($params)*) $(-> $t)* {
+                            match self { #result }
+                        }
+                    },
+                ]
+            ] [$($filter)*]
+        );
+    };
+
+    // XXX: Static methods?
+
+    // codegen after data collection
+    (
+        @I [$name:ident, $iname:ident, $path:path] {} [$(
+            [
+                st_name = $st_name:ident,
+                bind_style = $bind_style:ident,
+                body = $body:tt,
+                result = $result:ident,
+                expanded = { $($expanded:tt)* },
+            ]
+        )*] [$(
+            [
+                st_name = $filter_st_name:ident,
+                body = $filter_body:tt,
+            ]
+        )*]
+    ) => {
+        decl_derive!([$name] => $iname);
+        fn $iname(mut st: $crate::Structure) -> $crate::macros::quote::Tokens {
+            let _ = &mut st; // Silence the unused mut warning
+
+            // Filter/transform the `Structure` object before cloning it for
+            // individual methods.
+            $(
+                {
+                    let $filter_st_name = &mut st;
+                    $filter_body
+                }
+            )*
+
+            // Clone the `Structure` object and set the correct binding style,
+            // then perform method specific expansion.
+            $(
+                let $result = {
+                    let mut $st_name = st.clone();
+                    $st_name.bind_with(|_| ::synstructure::BindStyle::$bind_style);
+                    let $result = {
+                        $body
+                    };
+                    quote!{ $($expanded)* }
+                };
+            )*
+
+            st.bound_impl(stringify!($path), quote!{
+                $(#$result)*
+            })
         }
     }
 }
