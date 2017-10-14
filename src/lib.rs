@@ -33,7 +33,7 @@
 //!         }
 //!     })
 //! }
-//! # const _IGNORE: &str = stringify!(
+//! # const _IGNORE: &'static str = stringify!(
 //! decl_derive!([WalkFields] => walkfields_derive);
 //! # );
 //!
@@ -97,7 +97,7 @@
 //!         }
 //!     })
 //! }
-//! # const _IGNORE: &str = stringify!(
+//! # const _IGNORE: &'static str = stringify!(
 //! decl_derive!([Interest] => interest_derive);
 //! # );
 //!
@@ -139,8 +139,10 @@ extern crate syn;
 extern crate quote;
 extern crate proc_macro;
 
+use std::collections::HashSet;
+
 use syn::{Attribute, Body, ConstExpr, DeriveInput, Field, Ident, Ty, TyParamBound,
-          VariantData, WhereBoundPredicate, WherePredicate};
+          VariantData, WhereBoundPredicate, WherePredicate, Generics};
 use syn::visit::{self, Visitor};
 
 use quote::{ToTokens, Tokens};
@@ -178,6 +180,29 @@ impl ToTokens for BindStyle {
     }
 }
 
+// Internal method for merging seen_generics arrays together.
+fn generics_fuse(res: &mut Vec<bool>, new: &[bool]) {
+    for (i, &flag) in new.iter().enumerate() {
+        if i == res.len() {
+            res.push(false);
+        }
+        if flag {
+            res[i] = true;
+        }
+    }
+}
+
+// Internal method for extracting the set of generics which have been matched
+fn fetch_generics<'a>(set: &[bool], generics: &'a Generics) -> Vec<&'a Ident> {
+    let mut tys = vec![];
+    for (i, &seen) in set.iter().enumerate() {
+        if seen {
+            tys.push(&generics.ty_params[i].ident);
+        }
+    }
+    tys
+}
+
 /// Information about a specific binding. This contains both an `Ident`
 /// reference to the given field, and the syn `&'a Field` descriptor for that
 /// field.
@@ -193,6 +218,10 @@ pub struct BindingInfo<'a> {
     pub style: BindStyle,
 
     field: &'a Field,
+
+    // These are used to determine which type parameters are avaliable.
+    generics: &'a Generics,
+    seen_generics: Vec<bool>,
 }
 
 impl<'a> ToTokens for BindingInfo<'a> {
@@ -241,6 +270,40 @@ impl<'a> BindingInfo<'a> {
         } = *self;
         quote!(#style #binding)
     }
+
+    /// Returns a list of the type parameters which are referenced in this
+    /// field's type.
+    ///
+    /// # Caveat
+    ///
+    /// If the field contains any macros in type position, all parameters will
+    /// be considered bound. This is because we cannot determine which type
+    /// parameters are bound by type macros.
+    ///
+    /// # Example
+    /// ```
+    /// # #[macro_use] extern crate quote;
+    /// # extern crate synstructure;
+    /// # extern crate syn;
+    /// # use synstructure::*;
+    /// # fn main() {
+    /// let di = syn::parse_derive_input(r#"
+    ///     struct A<T, U> {
+    ///         a: Option<T>,
+    ///         b: U,
+    ///     }
+    /// "#).unwrap();
+    /// let mut s = Structure::new(&di);
+    ///
+    /// assert_eq!(
+    ///     s.variants()[0].bindings()[0].referenced_ty_params(),
+    ///     &[&(syn::Ident::from("T"))]
+    /// );
+    /// # }
+    /// ```
+    pub fn referenced_ty_params(&self) -> Vec<&'a Ident> {
+        fetch_generics(&self.seen_generics, self.generics)
+    }
 }
 
 /// This type is similar to `syn`'s `Variant` type, however each of the fields
@@ -263,10 +326,55 @@ pub struct VariantInfo<'a> {
     bindings: Vec<BindingInfo<'a>>,
     omitted_fields: bool,
     ast: VariantAst<'a>,
+    generics: &'a Generics,
+}
+
+/// Helper function used by the VariantInfo constructor. Walks all of the types
+/// in `field` and returns a list of the type parameters from `ty_params` which
+/// are referenced in the field.
+fn get_ty_params<'a>(field: &Field, generics: &Generics) -> Vec<bool> {
+    // Helper type. Discovers all identifiers inside of the visited type,
+    // and calls a callback with them.
+    struct BoundTypeLocator<'a> {
+        result: Vec<bool>,
+        generics: &'a Generics,
+    }
+
+    impl<'a> Visitor for BoundTypeLocator<'a> {
+        // XXX: This also (intentionally) captures paths like T::SomeType. Is
+        // this desirable?
+        fn visit_ident(&mut self, id: &Ident) {
+            for (idx, i) in self.generics.ty_params.iter().enumerate() {
+                if i.ident == id {
+                    self.result[idx] = true;
+                }
+            }
+        }
+
+        fn visit_ty(&mut self, ty: &Ty) {
+            // If we see a type macro, we can't know what type parameters it
+            // might be binding, so we presume that it binds all of them.
+            if let Ty::Mac(_) = *ty {
+                for r in &mut self.result {
+                    *r = true;
+                }
+            }
+            visit::walk_ty(self, ty);
+        }
+    }
+
+    let mut btl = BoundTypeLocator {
+        result: vec![false; generics.ty_params.len()],
+        generics: generics,
+    };
+
+    btl.visit_ty(&field.ty);
+
+    btl.result
 }
 
 impl<'a> VariantInfo<'a> {
-    fn new(ast: VariantAst<'a>, prefix: Option<&'a Ident>) -> Self {
+    fn new(ast: VariantAst<'a>, prefix: Option<&'a Ident>, generics: &'a Generics) -> Self {
         let bindings = match *ast.data {
             VariantData::Unit => vec![],
             VariantData::Tuple(ref fields) | VariantData::Struct(ref fields) => fields
@@ -277,6 +385,8 @@ impl<'a> VariantInfo<'a> {
                         binding: format!("__binding_{}", i).into(),
                         style: BindStyle::Ref,
                         field: field,
+                        generics: generics,
+                        seen_generics: get_ty_params(field, generics),
                     }
                 })
                 .collect::<Vec<_>>(),
@@ -287,6 +397,7 @@ impl<'a> VariantInfo<'a> {
             bindings: bindings,
             omitted_fields: false,
             ast: ast,
+            generics: generics,
         }
     }
 
@@ -630,6 +741,44 @@ impl<'a> VariantInfo<'a> {
         }
         self
     }
+
+    /// Returns a list of the type parameters which are referenced in this
+    /// field's type.
+    ///
+    /// # Caveat
+    ///
+    /// If the field contains any macros in type position, all parameters will
+    /// be considered bound. This is because we cannot determine which type
+    /// parameters are bound by type macros.
+    ///
+    /// # Example
+    /// ```
+    /// # #[macro_use] extern crate quote;
+    /// # extern crate synstructure;
+    /// # extern crate syn;
+    /// # use synstructure::*;
+    /// # fn main() {
+    /// let di = syn::parse_derive_input(r#"
+    ///     struct A<T, U> {
+    ///         a: Option<T>,
+    ///         b: U,
+    ///     }
+    /// "#).unwrap();
+    /// let mut s = Structure::new(&di);
+    ///
+    /// assert_eq!(
+    ///     s.variants()[0].bindings()[0].referenced_ty_params(),
+    ///     &[&(syn::Ident::from("T"))]
+    /// );
+    /// # }
+    /// ```
+    pub fn referenced_ty_params(&self) -> Vec<&'a Ident> {
+        let mut flags = Vec::new();
+        for binding in &self.bindings {
+            generics_fuse(&mut flags, &binding.seen_generics);
+        }
+        fetch_generics(&flags, self.generics)
+    }
 }
 
 /// A wrapper around a `syn` `DeriveInput` which provides utilities for creating
@@ -657,6 +806,7 @@ impl<'a> Structure<'a> {
                             discriminant: &v.discriminant,
                         },
                         Some(&ast.ident),
+                        &ast.generics,
                     )
                 })
                 .collect::<Vec<_>>(),
@@ -671,6 +821,7 @@ impl<'a> Structure<'a> {
                             discriminant: &NONE_DISCRIMINANT,
                         },
                         None,
+                        &ast.generics,
                     ),
                 ]
             }
@@ -1077,7 +1228,7 @@ impl<'a> Structure<'a> {
     ///
     /// # Caveat
     ///
-    /// If the method contains any macros in type position, all parameters will
+    /// If the struct contains any macros in type position, all parameters will
     /// be considered bound. This is because we cannot determine which type
     /// parameters are bound by type macros.
     ///
@@ -1105,57 +1256,13 @@ impl<'a> Structure<'a> {
     /// # }
     /// ```
     pub fn referenced_ty_params(&self) -> Vec<&'a Ident> {
-        // Helper type. Discovers all identifiers inside of the visited type,
-        // and calls a callback with them.
-        struct BoundTypeLocator<'a> {
-            result: Vec<&'a Ident>,
-            remaining: Vec<&'a Ident>,
-        }
-
-        impl<'a> Visitor for BoundTypeLocator<'a> {
-            fn visit_ident(&mut self, id: &Ident) {
-                // NOTE: We need to borrow result here explicitly otherwise the
-                // lambda captures all of `self` mutably.
-                let result = &mut self.result;
-                self.remaining.retain(|&i| {
-                    if i == id {
-                        // NOTE: Push `i` rather than `id` otherwise
-                        // lifetimes don't work out.
-                        result.push(i);
-                        false
-                    } else {
-                        true
-                    }
-                });
-            }
-
-            fn visit_ty(&mut self, ty: &Ty) {
-                // If we see a type macro, we can't know what type parameters it
-                // might be binding, so we presume that it binds all of them.
-                if let Ty::Mac(_) = *ty {
-                    self.result.extend(self.remaining.drain(..));
-                }
-                visit::walk_ty(self, ty);
-            }
-        }
-
-        let mut btl = BoundTypeLocator {
-            result: Vec::new(),
-            remaining: self.ast
-                .generics
-                .ty_params
-                .iter()
-                .map(|p| &p.ident)
-                .collect(),
-        };
-
+        let mut flags = Vec::new();
         for variant in &self.variants {
             for binding in &variant.bindings {
-                btl.visit_ty(&binding.field.ty);
+                generics_fuse(&mut flags, &binding.seen_generics);
             }
         }
-
-        btl.result
+        fetch_generics(&flags, &self.ast.generics)
     }
 
     /// Add trait bounds for a trait with the given path for each type parmaeter
@@ -1167,12 +1274,31 @@ impl<'a> Structure<'a> {
     /// be considered bound. This is because we cannot determine which type
     /// parameters are bound by type macros.
     pub fn add_trait_bounds(&self, bound: &TyParamBound, preds: &mut Vec<WherePredicate>) {
-        for param in self.referenced_ty_params() {
-            preds.push(WherePredicate::BoundPredicate(WhereBoundPredicate {
-                bound_lifetimes: vec![],
-                bounded_ty: Ty::Path(None, param.clone().into()),
-                bounds: vec![bound.clone()],
-            }));
+        let mut seen = HashSet::new();
+        let mut pred = |ty: Ty| {
+            if !seen.contains(&ty) {
+                seen.insert(ty.clone());
+                preds.push(WherePredicate::BoundPredicate(WhereBoundPredicate {
+                    bound_lifetimes: vec![],
+                    bounded_ty: ty,
+                    bounds: vec![bound.clone()],
+                }))
+            }
+        };
+
+        for variant in &self.variants {
+            for binding in &variant.bindings {
+                for &seen in &binding.seen_generics {
+                    if seen {
+                        pred(binding.ast().ty.clone());
+                        break;
+                    }
+                }
+
+                for param in binding.referenced_ty_params() {
+                    pred(Ty::Path(None, (*param).clone().into()));
+                }
+            }
         }
     }
 
@@ -1215,7 +1341,8 @@ impl<'a> Structure<'a> {
     ///     }),
     ///     quote!{
     ///         impl<T, U> ::krate::Trait for A<T, U>
-    ///             where U: ::krate::Trait
+    ///             where Option<U>: ::krate::Trait,
+    ///                   U: ::krate::Trait
     ///         {
     ///             fn a() {}
     ///         }

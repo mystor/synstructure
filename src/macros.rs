@@ -114,7 +114,7 @@ macro_rules! test_derive {
             let i = stringify!( $($i)* );
             let parsed = $crate::macros::syn::parse_derive_input(i)
                 .expect(concat!("Failed to parse input to `#[derive(",
-                                stringify!($derives),
+                                stringify!($name),
                                 ")]`"));
 
             // NOTE: These outputs can get quite long, so we'd like to avoid
