@@ -17,7 +17,9 @@ pub mod proc_macro {
     pub use proc_macro::*; // For proc_macro::TokenStream
 }
 
-/// The `decl_derive!` macro declares a custom derive wrapper. It will parse the incoming TokenStream into a `synstructure::Structure` object, and pass it into the inner function.
+/// The `decl_derive!` macro declares a custom derive wrapper. It will parse the
+/// incoming TokenStream into a `synstructure::Structure` object, and pass it
+/// into the inner function.
 ///
 /// Your inner function should have the following type:
 ///

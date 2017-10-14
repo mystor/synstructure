@@ -16,7 +16,7 @@ impl Important for bool {
 #[derive(Important)]
 struct Test {
     x: bool,
-    y: bool
+    y: bool,
 }
 
 #[derive(Important)]

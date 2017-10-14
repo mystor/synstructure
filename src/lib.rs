@@ -134,15 +134,15 @@
 //! For more example usage, consider investigating the `abomonation_derive` crate,
 //! which makes use of this crate, and is fairly simple.
 
-extern crate syn;
+extern crate proc_macro;
 #[macro_use]
 extern crate quote;
-extern crate proc_macro;
+extern crate syn;
 
 use std::collections::HashSet;
 
-use syn::{Attribute, Body, ConstExpr, DeriveInput, Field, Ident, Ty, TyParamBound,
-          VariantData, WhereBoundPredicate, WherePredicate, Generics};
+use syn::{Attribute, Body, ConstExpr, DeriveInput, Field, Generics, Ident, Ty, TyParamBound,
+          VariantData, WhereBoundPredicate, WherePredicate};
 use syn::visit::{self, Visitor};
 
 use quote::{ToTokens, Tokens};
@@ -1275,15 +1275,13 @@ impl<'a> Structure<'a> {
     /// parameters are bound by type macros.
     pub fn add_trait_bounds(&self, bound: &TyParamBound, preds: &mut Vec<WherePredicate>) {
         let mut seen = HashSet::new();
-        let mut pred = |ty: Ty| {
-            if !seen.contains(&ty) {
-                seen.insert(ty.clone());
-                preds.push(WherePredicate::BoundPredicate(WhereBoundPredicate {
-                    bound_lifetimes: vec![],
-                    bounded_ty: ty,
-                    bounds: vec![bound.clone()],
-                }))
-            }
+        let mut pred = |ty: Ty| if !seen.contains(&ty) {
+            seen.insert(ty.clone());
+            preds.push(WherePredicate::BoundPredicate(WhereBoundPredicate {
+                bound_lifetimes: vec![],
+                bounded_ty: ty,
+                bounds: vec![bound.clone()],
+            }))
         };
 
         for variant in &self.variants {
@@ -1354,8 +1352,7 @@ impl<'a> Structure<'a> {
         let name = &self.ast.ident;
         let (impl_generics, ty_generics, where_clause) = self.ast.generics.split_for_impl();
 
-        let bound =
-            syn::parse_ty_param_bound(bound.as_ref())
+        let bound = syn::parse_ty_param_bound(bound.as_ref())
             .expect("`bound` argument must be a valid rust trait bound");
 
         let mut where_clause = where_clause.clone();
@@ -1381,8 +1378,7 @@ impl<'a> Structure<'a> {
         let name = &self.ast.ident;
         let (impl_generics, ty_generics, where_clause) = self.ast.generics.split_for_impl();
 
-        let bound =
-            syn::parse_ty_param_bound(bound.as_ref())
+        let bound = syn::parse_ty_param_bound(bound.as_ref())
             .expect("`bound` argument must be a valid rust trait bound");
 
         quote! {
