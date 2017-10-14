@@ -1,0 +1,7 @@
+[package]
+name = "test_suite"
+version = "0.1.0"
+authors = ["Michael Layzell <michael@thelayzells.com>"]
+
+[dependencies]
+test_macros = { path = "test_macros" }
