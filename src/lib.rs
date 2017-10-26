@@ -486,6 +486,78 @@ impl<'a> VariantInfo<'a> {
         t
     }
 
+    /// Generates the token stream required to construct the current variant.
+    ///
+    /// The init array initializes each of the fields in the order they are written in `variant.ast().fields`.
+    ///
+    /// # Example
+    /// ```
+    /// # #[macro_use] extern crate quote;
+    /// # extern crate synstructure;
+    /// # extern crate syn;
+    /// # use synstructure::*;
+    /// # fn main() {
+    /// let di = syn::parse_derive_input(r#"
+    ///     enum A {
+    ///         B(usize, usize),
+    ///         C{ v: usize },
+    ///     }
+    /// "#).unwrap();
+    /// let s = Structure::new(&di);
+    ///
+    /// assert_eq!(
+    ///     s.variants()[0].construct(|_, i| quote!(#i)),
+    ///
+    ///     quote!{
+    ///         A::B(0usize, 1usize,)
+    ///     }
+    /// );
+    ///
+    /// assert_eq!(
+    ///     s.variants()[1].construct(|_, i| quote!(#i)),
+    ///
+    ///     quote!{
+    ///         A::C{ v: 0usize, }
+    ///     }
+    /// );
+    /// # }
+    /// ```
+    pub fn construct<F, T>(&self, mut func: F) -> Tokens
+    where
+        F: FnMut(&Field, usize) -> T,
+        T: ToTokens,
+    {
+        let mut t = Tokens::new();
+        if let Some(prefix) = self.prefix {
+            prefix.to_tokens(&mut t);
+            t.append("::");
+        }
+        self.ast.ident.to_tokens(&mut t);
+
+        match *self.ast.data {
+            VariantData::Unit => (),
+            VariantData::Tuple(ref fields) => {
+                t.append("(");
+                for (i, field) in fields.iter().enumerate() {
+                    func(field, i).to_tokens(&mut t);
+                    t.append(",");
+                }
+                t.append(")");
+            }
+            VariantData::Struct(ref fields) => {
+                t.append("{");
+                for (i, field) in fields.iter().enumerate() {
+                    field.ident.to_tokens(&mut t);
+                    t.append(":");
+                    func(field, i).to_tokens(&mut t);
+                    t.append(",");
+                }
+                t.append("}");
+            }
+        }
+        t
+    }
+
     /// Runs the passed-in function once for each bound field, passing in a `BindingInfo`.
     /// and generating a `match` arm which evaluates the returned tokens.
     ///
