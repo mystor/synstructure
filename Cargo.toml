@@ -1,7 +1,7 @@
 [package]
 name = "synstructure"
 version = "0.6.1"
-authors = ["Michael Layzell <michael@thelayzells.com>"]
+authors = ["Nika Layzell <nika@thelayzells.com>"]
 
 description = "expand_substructure-like helpers for syn macros 1.1 derive macros"
 documentation = "https://docs.rs/synstructure"
