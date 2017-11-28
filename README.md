@@ -11,8 +11,6 @@ every field, then you have come to the right place!
 
 # Example: `WalkFields`
 ```
-# #[macro_use] extern crate synstructure;
-# #[macro_use] extern crate quote;
 /*
  * Trait
  */
@@ -37,9 +35,7 @@ fn walkfields_derive(s: synstructure::Structure) -> quote::Tokens {
         }
     })
 }
-# const _IGNORE: &'static str = stringify!(
 decl_derive!([WalkFields] => walkfields_derive);
-# );
 
 /*
  * Test Case
@@ -73,8 +69,6 @@ fn main() {
 
 # Example: `Interest`
 ```
-# #[macro_use] extern crate synstructure;
-# #[macro_use] extern crate quote;
 /*
  * Trait
  */
@@ -101,9 +95,7 @@ fn interest_derive(mut s: synstructure::Structure) -> quote::Tokens {
         }
     })
 }
-# const _IGNORE: &'static str = stringify!(
 decl_derive!([Interest] => interest_derive);
-# );
 
 /*
  * Test Case
