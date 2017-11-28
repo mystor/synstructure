@@ -10,7 +10,7 @@ If you are writing a `#[derive]` which needs to perform some operation on
 every field, then you have come to the right place!
 
 # Example: `WalkFields`
-```
+```rust
 /*
  * Trait
  */
@@ -68,7 +68,7 @@ fn main() {
 ```
 
 # Example: `Interest`
-```
+```rust
 /*
  * Trait
  */
