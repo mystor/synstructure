@@ -28,9 +28,13 @@
 //!         walk(#bi)
 //!     });
 //!
-//!     s.bound_impl(quote!(synstructure_test_traits::WalkFields), quote!{
-//!         fn walk_fields(&self, walk: &mut FnMut(&synstructure_test_traits::WalkFields)) {
-//!             match *self { #body }
+//!     s.gen_impl(quote! {
+//!         extern crate synstructure_test_traits;
+//!
+//!         gen impl synstructure_test_traits::WalkFields for @Self {
+//!             fn walk_fields(&self, walk: &mut FnMut(&synstructure_test_traits::WalkFields)) {
+//!                 match *self { #body }
+//!             }
 //!         }
 //!     })
 //! }
@@ -97,10 +101,13 @@
 //!         #acc || synstructure_test_traits::Interest::interesting(#bi)
 //!     });
 //!
-//!     s.bound_impl(quote!(synstructure_test_traits::Interest), quote!{
-//!         fn interesting(&self) -> bool {
-//!             match *self {
-//!                 #body
+//!     s.gen_impl(quote! {
+//!         extern crate synstructure_test_traits;
+//!         gen impl synstructure_test_traits::Interest for @Self {
+//!             fn interesting(&self) -> bool {
+//!                 match *self {
+//!                     #body
+//!                 }
 //!             }
 //!         }
 //!     })
@@ -154,6 +161,7 @@ extern crate proc_macro;
 extern crate proc_macro2;
 #[macro_use]
 extern crate quote;
+#[macro_use]
 extern crate syn;
 extern crate unicode_xid;
 
@@ -167,7 +175,10 @@ use syn::{
 };
 use syn::visit::{self, Visit};
 
-use quote::{ToTokens, Tokens};
+// re-export the quote! macro so we can depend on it being around in our macro's
+// implementations.
+#[doc(hidden)]
+pub use quote::*;
 
 use unicode_xid::UnicodeXID;
 
@@ -1450,6 +1461,8 @@ impl<'a> Structure<'a> {
         }
     }
 
+    /// > NOTE: This methods' features are superceded by `Structure::gen_impl`.
+    ///
     /// Creates an `impl` block with the required generic type fields filled in
     /// to implement the trait `path`.
     ///
@@ -1522,6 +1535,8 @@ impl<'a> Structure<'a> {
         )
     }
 
+    /// > NOTE: This methods' features are superceded by `Structure::gen_impl`.
+    ///
     /// Creates an `impl` block with the required generic type fields filled in
     /// to implement the unsafe trait `path`.
     ///
@@ -1594,6 +1609,8 @@ impl<'a> Structure<'a> {
         )
     }
 
+    /// > NOTE: This methods' features are superceded by `Structure::gen_impl`.
+    ///
     /// Creates an `impl` block with the required generic type fields filled in
     /// to implement the trait `path`.
     ///
@@ -1656,6 +1673,8 @@ impl<'a> Structure<'a> {
         )
     }
 
+    /// > NOTE: This methods' features are superceded by `Structure::gen_impl`.
+    ///
     /// Creates an `impl` block with the required generic type fields filled in
     /// to implement the unsafe trait `path`.
     ///
@@ -1709,6 +1728,7 @@ impl<'a> Structure<'a> {
     /// );
     /// # }
     /// ```
+    #[deprecated]
     pub fn unsafe_unbound_impl<P: ToTokens, B: ToTokens>(&self, path: P, body: B) -> Tokens {
         self.impl_internal(
             path.into_tokens(),
@@ -1761,6 +1781,225 @@ impl<'a> Structure<'a> {
                 #safety impl #impl_generics #bound for #name #ty_generics #where_clause {
                     #body
                 }
+            };
+        }
+    }
+
+    /// Generate an impl block for the given struct. This impl block will
+    /// automatically use hygiene tricks to avoid polluting the caller's
+    /// namespace, and will automatically add trait bounds for generic type
+    /// parameters.
+    ///
+    /// # Syntax
+    ///
+    /// This function accepts its arguments as a `Tokens`. The recommended way
+    /// to call this function is passing the result of invoking the `quote!`
+    /// macro to it.
+    ///
+    /// ```ignore
+    /// s.gen_impl(quote! {
+    ///     // You can write any items which you want to import into scope here.
+    ///     // For example, you may want to include an `extern crate` for the
+    ///     // crate which implements your trait. These items will only be
+    ///     // visible to the code you generate, and won't be exposed to the
+    ///     // consuming crate
+    ///     extern crate krate;
+    ///
+    ///     // You can also add `use` statements here to bring types or traits
+    ///     // into scope.
+    ///     //
+    ///     // WARNING: Try not to use common names here, because the stable
+    ///     // version of syn does not support hygiene and you could accidentally
+    ///     // shadow types from the caller crate.
+    ///     use krate::Trait as MyTrait;
+    ///
+    ///     // The actual impl block is a `gen impl` or `gen unsafe impl` block.
+    ///     // You can use `@Self` to refer to the structure's type.
+    ///     gen impl MyTrait for @Self {
+    ///         fn f(&self) { ... }
+    ///     }
+    /// })
+    /// ```
+    ///
+    /// The most common usage of this trait involves loading the crate the
+    /// target trait comes from with `extern crate`, and then invoking a `gen
+    /// impl` block.
+    ///
+    /// # Hygiene
+    ///
+    /// This method tries to handle hygiene intelligenly for both stable and
+    /// unstable proc-macro implementations, however there are visible
+    /// differences.
+    ///
+    /// The output of every `gen_impl` function is wrapped in a dummy `const`
+    /// value, to ensure that it is given its own scope, and any values brought
+    /// into scope are not leaked to the calling crate. For example, the above
+    /// invocation may generate an output like the following:
+    ///
+    /// ```ignore
+    /// const _DERIVE_krate_Trait_FOR_Struct: () = {
+    ///     extern crate krate;
+    ///     use krate::Trait as MyTrait;
+    ///     impl<T> MyTrait for Struct<T> where T: MyTrait {
+    ///         fn f(&self) { ... }
+    ///     }
+    /// };
+    /// ```
+    ///
+    /// ### Using the `std` crate
+    ///
+    /// If you are using `quote!()` to implement your trait, with the
+    /// `proc-macro2/nightly` feature, `std` isn't considered to be in scope for
+    /// your macro. This means that if you use types from `std` in your
+    /// procedural macro, you'll want to explicitly load it with an `extern
+    /// crate std;`.
+    ///
+    /// ### Absolute paths
+    ///
+    /// You should generally avoid using absolute paths in your generated code,
+    /// as they will resolve very differently when using the stable and nightly
+    /// versions of `proc-macro2`. Instead, load the crates you need to use
+    /// explictly with `extern crate` and
+    ///
+    /// # Trait Bounds
+    ///
+    /// This method will automatically add trait bounds for any type parameters
+    /// which are referenced within the types of non-ignored fields.
+    ///
+    /// ### Type Macro Caveat
+    ///
+    /// If the method contains any macros in type position, all parameters will
+    /// be considered bound. This is because we cannot determine which type
+    /// parameters are bound by type macros.
+    ///
+    /// # Panics
+    ///
+    /// This function will panic if the input `Tokens` is not well-formed.
+    ///
+    /// # Example Usage
+    ///
+    /// ```
+    /// # #[macro_use] extern crate quote;
+    /// # extern crate synstructure;
+    /// # #[macro_use] extern crate syn;
+    /// # use synstructure::*;
+    /// # fn main() {
+    /// let di: syn::DeriveInput = parse_quote! {
+    ///     enum A<T, U> {
+    ///         B(T),
+    ///         C(Option<U>),
+    ///     }
+    /// };
+    /// let mut s = Structure::new(&di);
+    ///
+    /// s.filter_variants(|v| v.ast().ident != "B");
+    ///
+    /// assert_eq!(
+    ///     s.gen_impl(quote! {
+    ///         extern crate krate;
+    ///         gen impl krate::Trait for @Self {
+    ///             fn a() {}
+    ///         }
+    ///     }),
+    ///     quote!{
+    ///         #[allow(non_upper_case_globals)]
+    ///         const _DERIVE_krate_Trait_FOR_A: () = {
+    ///             extern crate krate;
+    ///             impl<T, U> krate::Trait for A<T, U>
+    ///             where
+    ///                 Option<U>: krate::Trait,
+    ///                 U: krate::Trait
+    ///             {
+    ///                 fn a() {}
+    ///             }
+    ///         };
+    ///     }
+    /// );
+    /// # }
+    /// ```
+    pub fn gen_impl(&self, cfg: Tokens) -> Tokens {
+        use syn::buffer::{TokenBuffer, Cursor};
+        use syn::synom::PResult;
+        use proc_macro2::TokenTree;
+
+        /* Parsing Logic */
+        let buf = TokenBuffer::new2(cfg.into());
+
+        fn get_tt(c: Cursor) -> PResult<TokenTree> {
+            if let Some((tt, c)) = c.token_tree() {
+                Ok((tt, c))
+            } else {
+                let ((), _) = reject!(c,)?;
+                unreachable!()
+            }
+        }
+
+        fn parse_gen_impl(c: Cursor)
+            -> PResult<(Option<token::Unsafe>, TraitBound, TokenTree)>
+        {
+            // `gen`
+            let (id, c) = syn!(c, Ident)?;
+            if id.as_ref() != "gen" {
+                let ((), _) = reject!(c,)?;
+                unreachable!()
+            }
+
+            // `impl` or unsafe impl`
+            let (unsafe_kw, c) = option!(c, keyword!(unsafe))?;
+            let (_, c) = syn!(c, token::Impl)?;
+
+            // NOTE: After this point we assume they meant to write a gen impl,
+            // so we panic if we run into an error.
+
+            // @bound
+            let (bound, c) = syn!(c, TraitBound)
+                .expect("Expected a trait bound after `gen impl`");
+
+            // `for @Self`
+            let (_, c) = keyword!(c, for)
+                .expect("Expected `for` after trait bound");
+            let (_, c) = do_parse!(c, syn!(Token![@]) >> keyword!(Self) >> (()))
+                .expect("Expected `@Self` after `for`");
+
+            // The body of the impl
+            let (body, c) = get_tt(c)
+                .expect("Expected an impl body after `@Self`");
+
+            Ok(((unsafe_kw, bound, body), c))
+        }
+
+        let mut c = buf.begin();
+        let mut before = vec![];
+        let ((unsafe_kw, bound, body), after) = loop {
+            if let Ok((gi, c2)) = parse_gen_impl(c) {
+                break (gi, c2.token_stream());
+            } else if let Ok((tt, c2)) = get_tt(c) {
+                c = c2;
+                before.push(tt);
+            } else {
+                panic!("Expected a gen impl block");
+            }
+        };
+
+        /* Codegen Logic */
+        let name = &self.ast.ident;
+        let (impl_generics, ty_generics, where_clause) = self.ast.generics.split_for_impl();
+
+        let mut where_clause = where_clause.cloned();
+        self.add_trait_bounds(&bound, &mut where_clause);
+
+        let dummy_const: Ident = sanitize_ident(&format!(
+            "_DERIVE_{}_FOR_{}",
+            (&bound).into_tokens(),
+            name.into_tokens(),
+        ));
+
+        quote! {
+            #[allow(non_upper_case_globals)]
+            const #dummy_const: () = {
+                #(#before)*
+                #unsafe_kw impl #impl_generics #bound for #name #ty_generics #where_clause #body
+                #after
             };
         }
     }
