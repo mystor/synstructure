@@ -1,5 +1,7 @@
 # synstructure
 
+[![Documentation](https://docs.rs/synstructure/badge.svg)](https://docs.rs/synstructure) [![Build Status](https://travis-ci.org/mystor/synstructure.svg?branch=master)](https://travis-ci.org/mystor/synstructure)
+
 > NOTE: What follows is an exerpt from the module level documentation. For full
 > details read the docs on [docs.rs](https://docs.rs/synstructure/)
 
