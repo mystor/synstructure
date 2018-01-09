@@ -10,6 +10,8 @@ readme = "README.md"
 license = "MIT"
 keywords = ["syn", "macros", "derive", "expand_substructure", "enum"]
 
+include = ["src/**/*", "Cargo.toml", "README.md", "LICENSE"]
+
 [features]
 simple-derive = []
 
