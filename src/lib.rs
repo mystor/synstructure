@@ -159,8 +159,12 @@ extern crate unicode_xid;
 
 use std::collections::HashSet;
 
-use syn::{Generics, Ident, Attribute, Field, Fields, Expr, DeriveInput, TraitBound, WhereClause, GenericParam, Data, WherePredicate, TypeParamBound, Type, TypeMacro, FieldsUnnamed, FieldsNamed, PredicateType, TypePath};
-use syn::{token, punctuated};
+use syn::{
+    Generics, Ident, Attribute, Field, Fields, Expr, DeriveInput,
+    TraitBound, WhereClause, GenericParam, Data, WherePredicate,
+    TypeParamBound, Type, TypeMacro, FieldsUnnamed, FieldsNamed,
+    PredicateType, TypePath, token, punctuated,
+};
 use syn::visit::{self, Visit};
 
 use quote::{ToTokens, Tokens};
