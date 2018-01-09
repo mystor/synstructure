@@ -4,7 +4,7 @@
 extern crate test_macros;
 
 // Import the trait at a strange path to show that it works when you do this.
-extern crate example_traits as something_random;
+extern crate synstructure_test_traits as something_random;
 use something_random::Interest as RInterest;
 
 #[derive(Interest)]

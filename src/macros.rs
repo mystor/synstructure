@@ -172,7 +172,7 @@ macro_rules! test_derive {
 ///     // This macro implements the `Interesting` method exported by the `aa`
 ///     // crate. It will explicitly add an `extern crate` invocation to import the
 ///     // crate into the expanded context.
-///     derive_interest impl example_traits::Interest {
+///     derive_interest impl synstructure_test_traits::Interest {
 ///         // A "filter" block can be added. It evaluates its body with the (s)
 ///         // variable bound to a mutable reference to the input `Structure`
 ///         // object.
@@ -189,7 +189,7 @@ macro_rules! test_derive {
 ///         // the `self` argument with.
 ///         fn interesting(&self as s) -> bool {
 ///             s.fold(false, |acc, bi| {
-///                 quote!(#acc || example_traits::Interest::interesting(#bi))
+///                 quote!(#acc || synstructure_test_traits::Interest::interesting(#bi))
 ///             })
 ///         }
 ///     }
@@ -206,10 +206,10 @@ macro_rules! test_derive {
 ///         }
 ///         expands to {
 ///             #[allow(non_upper_case_globals)]
-///             const _DERIVE_example_traits_Interest_FOR_A: () = {
-///                 extern crate example_traits;
-///                 impl<T> example_traits::Interest for A<T>
-///                     where T: example_traits::Interest
+///             const _DERIVE_synstructure_test_traits_Interest_FOR_A: () = {
+///                 extern crate synstructure_test_traits;
+///                 impl<T> synstructure_test_traits::Interest for A<T>
+///                     where T: synstructure_test_traits::Interest
 ///                 {
 ///                     fn interesting(&self) -> bool {
 ///                         match *self {
@@ -219,8 +219,8 @@ macro_rules! test_derive {
 ///                                 ..
 ///                             } => {
 ///                                 false ||
-///                                     example_traits::Interest::interesting(__binding_0) ||
-///                                     example_traits::Interest::interesting(__binding_2)
+///                                     synstructure_test_traits::Interest::interesting(__binding_0) ||
+///                                     synstructure_test_traits::Interest::interesting(__binding_2)
 ///                             }
 ///                         }
 ///                     }

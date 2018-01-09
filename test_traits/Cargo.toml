@@ -1,0 +1,10 @@
+[package]
+# A nice long awkward name so it doesn't conflict with things on crates.io.
+name = "synstructure_test_traits"
+version = "0.1.0"
+description = "Helper test traits for synstructure doctests"
+license = "MIT"
+authors = ["Nika Layzell <nika@thelayzells.com>"]
+
+[lib]
+path = "lib.rs"

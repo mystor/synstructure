@@ -7,5 +7,5 @@ authors = ["Nika Layzell <nika@thelayzells.com>"]
 path = "test.rs"
 
 [dependencies]
-example_traits = { path = "../example_traits" }
+synstructure_test_traits = { path = "../test_traits" }
 test_macros = { path = "test_macros" }

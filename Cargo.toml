@@ -20,8 +20,9 @@ quote = "0.4.2"
 unicode-xid = "0.1"
 
 [dev-dependencies]
-# Used in the documentation as an example trait crate provider.
-example_traits = { version = "0.1", path = "example_traits" }
+# Used in the documentation as an example trait crate provider. Unfortunately,
+# we need to publish this in order to be able to publish synstructure.
+synstructure_test_traits = { version = "0.1", path = "test_traits" }
 
 [workspace]
-members = ["example_traits", "test_suite", "test_suite/test_macros"]
+members = ["test_traits", "test_suite", "test_suite/test_macros"]

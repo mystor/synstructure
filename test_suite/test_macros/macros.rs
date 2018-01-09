@@ -9,9 +9,9 @@ decl_derive!([Interest] => interest_derive);
 
 fn interest_derive(structure: synstructure::Structure) -> quote::Tokens {
     let match_body = structure.fold(quote!(false), |acc, bi| quote!{
-        #acc || example_traits::Interest::interesting(#bi)
+        #acc || synstructure_test_traits::Interest::interesting(#bi)
     });
-    structure.bound_impl(quote!(example_traits::Interest), quote! {
+    structure.bound_impl(quote!(synstructure_test_traits::Interest), quote! {
         fn interesting(&self) -> bool {
             match *self {
                 #match_body
@@ -31,9 +31,9 @@ fn test() {
         }
         expands to {
             #[allow(non_upper_case_globals)]
-            const _DERIVE_example_traits_Interest_FOR_A: () = {
-                extern crate example_traits;
-                impl example_traits::Interest for A {
+            const _DERIVE_synstructure_test_traits_Interest_FOR_A: () = {
+                extern crate synstructure_test_traits;
+                impl synstructure_test_traits::Interest for A {
                     fn interesting(&self) -> bool {
                         match *self {
                             A {
@@ -41,8 +41,8 @@ fn test() {
                                 b: ref __binding_1,
                             } => {
                                 false ||
-                                    example_traits::Interest::interesting(__binding_0) ||
-                                    example_traits::Interest::interesting(__binding_1)
+                                    synstructure_test_traits::Interest::interesting(__binding_0) ||
+                                    synstructure_test_traits::Interest::interesting(__binding_1)
                             }
                         }
                     }

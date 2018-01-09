@@ -28,8 +28,8 @@
 //!         walk(#bi)
 //!     });
 //!
-//!     s.bound_impl(quote!(example_traits::WalkFields), quote!{
-//!         fn walk_fields(&self, walk: &mut FnMut(&example_traits::WalkFields)) {
+//!     s.bound_impl(quote!(synstructure_test_traits::WalkFields), quote!{
+//!         fn walk_fields(&self, walk: &mut FnMut(&synstructure_test_traits::WalkFields)) {
 //!             match *self { #body }
 //!         }
 //!     })
@@ -51,12 +51,12 @@
 //!         }
 //!         expands to {
 //!             #[allow(non_upper_case_globals)]
-//!             const _DERIVE_example_traits_WalkFields_FOR_A: () = {
-//!                 extern crate example_traits;
-//!                 impl<T> example_traits::WalkFields for A<T>
-//!                     where T: example_traits::WalkFields
+//!             const _DERIVE_synstructure_test_traits_WalkFields_FOR_A: () = {
+//!                 extern crate synstructure_test_traits;
+//!                 impl<T> synstructure_test_traits::WalkFields for A<T>
+//!                     where T: synstructure_test_traits::WalkFields
 //!                 {
-//!                     fn walk_fields(&self, walk: &mut FnMut(&example_traits::WalkFields)) {
+//!                     fn walk_fields(&self, walk: &mut FnMut(&synstructure_test_traits::WalkFields)) {
 //!                         match *self {
 //!                             A::B(ref __binding_0, ref __binding_1,) => {
 //!                                 { walk(__binding_0) }
@@ -94,10 +94,10 @@
 //!
 //! fn interest_derive(mut s: synstructure::Structure) -> quote::Tokens {
 //!     let body = s.fold(false, |acc, bi| quote!{
-//!         #acc || example_traits::Interest::interesting(#bi)
+//!         #acc || synstructure_test_traits::Interest::interesting(#bi)
 //!     });
 //!
-//!     s.bound_impl(quote!(example_traits::Interest), quote!{
+//!     s.bound_impl(quote!(synstructure_test_traits::Interest), quote!{
 //!         fn interesting(&self) -> bool {
 //!             match *self {
 //!                 #body
@@ -122,21 +122,21 @@
 //!         }
 //!         expands to {
 //!             #[allow(non_upper_case_globals)]
-//!             const _DERIVE_example_traits_Interest_FOR_A: () = {
-//!                 extern crate example_traits;
-//!                 impl<T> example_traits::Interest for A<T>
-//!                     where T: example_traits::Interest
+//!             const _DERIVE_synstructure_test_traits_Interest_FOR_A: () = {
+//!                 extern crate synstructure_test_traits;
+//!                 impl<T> synstructure_test_traits::Interest for A<T>
+//!                     where T: synstructure_test_traits::Interest
 //!                 {
 //!                     fn interesting(&self) -> bool {
 //!                         match *self {
 //!                             A::B(ref __binding_0, ref __binding_1,) => {
 //!                                 false ||
-//!                                     example_traits::Interest::interesting(__binding_0) ||
-//!                                     example_traits::Interest::interesting(__binding_1)
+//!                                     synstructure_test_traits::Interest::interesting(__binding_0) ||
+//!                                     synstructure_test_traits::Interest::interesting(__binding_1)
 //!                             }
 //!                             A::C(ref __binding_0,) => {
 //!                                 false ||
-//!                                     example_traits::Interest::interesting(__binding_0)
+//!                                     synstructure_test_traits::Interest::interesting(__binding_0)
 //!                             }
 //!                         }
 //!                     }
