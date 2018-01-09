@@ -6,7 +6,7 @@
 
 // Re-exports used by the decl_derive! and test_derive!
 pub mod syn {
-    pub use syn::*; // For syn::parse_derive_input
+    pub use syn::*; // For syn::parse_str and syn::parse
 }
 
 pub mod quote {
@@ -15,6 +15,10 @@ pub mod quote {
 
 pub mod proc_macro {
     pub use proc_macro::*; // For proc_macro::TokenStream
+}
+
+pub mod proc_macro2 {
+    pub use proc_macro2::*; // For proc_macro2::TokenStream
 }
 
 /// The `decl_derive!` macro declares a custom derive wrapper. It will parse the
@@ -50,14 +54,11 @@ macro_rules! decl_derive {
             i: $crate::macros::proc_macro::TokenStream
         ) -> $crate::macros::proc_macro::TokenStream
         {
-            let parsed = $crate::macros::syn::parse_derive_input(&i.to_string())
+            let parsed = $crate::macros::syn::parse::<$crate::macros::syn::DeriveInput>(i)
                 .expect(concat!("Failed to parse input to `#[derive(",
                                 stringify!($derives),
                                 ")]`"));
-            $inner($crate::Structure::new(&parsed)).parse()
-                .expect(concat!("Failed to parse output from `#[derive(",
-                                stringify!($derives),
-                                ")]`"))
+            $inner($crate::Structure::new(&parsed)).into()
         }
     };
 }
@@ -114,33 +115,19 @@ macro_rules! test_derive {
     ($name:path { $($i:tt)* } expands to { $($o:tt)* } no_build) => {
         {
             let i = stringify!( $($i)* );
-            let parsed = $crate::macros::syn::parse_derive_input(i)
+            let parsed = $crate::macros::syn::parse_str::<$crate::macros::syn::DeriveInput>(i)
                 .expect(concat!("Failed to parse input to `#[derive(",
                                 stringify!($name),
                                 ")]`"));
 
-            // NOTE: These outputs can get quite long, so we'd like to avoid
-            // recursive macros like `quote!` for parsing them. Instead, we use
-            // stringify (which is inconsistent with whitespace), split on
-            // whitespace, and compare the lists of tokens.
-
             let res = $name($crate::Structure::new(&parsed));
-            let expected = stringify!( $($o)* );
+            let expected = stringify!( $($o)* )
+                .parse::<$crate::macros::proc_macro2::TokenStream>()
+                .expect("output should be a valid TokenStream");
+            let mut expected_toks = $crate::macros::quote::Tokens::new();
+            expected_toks.append_all(expected);
 
-            let res_toks = res.as_str()
-                .split(|ch: char| ch.is_whitespace())
-                .filter(|s: &&str| !s.is_empty())
-                .collect::<Vec<&str>>();
-
-            let exp_toks = expected
-                .split(|ch: char| ch.is_whitespace())
-                .filter(|s: &&str| !s.is_empty())
-                .collect::<Vec<&str>>();
-
-            assert_eq!(
-                res_toks,
-                exp_toks
-            )
+            assert_eq!(res, expected_toks)
         }
     };
 }

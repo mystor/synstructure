@@ -1,0 +1,7 @@
+[package]
+name = "example_traits"
+version = "0.1.0"
+authors = ["Nika Layzell <nika@thelayzells.com>"]
+
+[lib]
+path = "lib.rs"

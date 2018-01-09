@@ -9,26 +9,15 @@
 //! ```
 //! # #[macro_use] extern crate synstructure;
 //! # #[macro_use] extern crate quote;
-//! /*
-//!  * Trait
-//!  */
-//! pub trait WalkFields: std::any::Any {
-//!     fn walk_fields(&self, walk: &mut FnMut(&WalkFields));
-//! }
-//! impl WalkFields for i32 {
-//!     fn walk_fields(&self, walk: &mut FnMut(&WalkFields)) {}
-//! }
+//! // NOTE: See example_traits/lib.rs for WalkField's definition.
 //!
-//! /*
-//!  * Derive Implementation
-//!  */
 //! fn walkfields_derive(s: synstructure::Structure) -> quote::Tokens {
 //!     let body = s.each(|bi| quote!{
 //!         walk(#bi)
 //!     });
 //!
-//!     s.bound_impl("::WalkFields", quote!{
-//!         fn walk_fields(&self, walk: &mut FnMut(&::WalkFields)) {
+//!     s.bound_impl(quote!(example_traits::WalkFields), quote!{
+//!         fn walk_fields(&self, walk: &mut FnMut(&example_traits::WalkFields)) {
 //!             match *self { #body }
 //!         }
 //!     })
@@ -49,19 +38,23 @@
 //!             }
 //!         }
 //!         expands to {
-//!             impl<T> ::WalkFields for A<T> where T: ::WalkFields {
-//!                 fn walk_fields(&self, walk: &mut FnMut(&::WalkFields)) {
-//!                     match *self {
-//!                         A::B(ref __binding_0, ref __binding_1,) => {
-//!                             { walk(__binding_0) }
-//!                             { walk(__binding_1) }
-//!                         }
-//!                         A::C(ref __binding_0,) => {
-//!                             { walk(__binding_0) }
+//!             #[allow(non_upper_case_globals)]
+//!             const _DERIVE_example_traits_WalkFields_FOR_A: () = {
+//!                 extern crate example_traits;
+//!                 impl<T> example_traits::WalkFields for A<T> where T: example_traits::WalkFields {
+//!                     fn walk_fields(&self, walk: &mut FnMut(&example_traits::WalkFields)) {
+//!                         match *self {
+//!                             A::B(ref __binding_0, ref __binding_1,) => {
+//!                                 { walk(__binding_0) }
+//!                                 { walk(__binding_1) }
+//!                             }
+//!                             A::C(ref __binding_0,) => {
+//!                                 { walk(__binding_0) }
+//!                             }
 //!                         }
 //!                     }
 //!                 }
-//!             }
+//!             };
 //!         }
 //!     }
 //! }
@@ -71,25 +64,14 @@
 //! ```
 //! # #[macro_use] extern crate synstructure;
 //! # #[macro_use] extern crate quote;
-//! /*
-//!  * Trait
-//!  */
-//! pub trait Interest {
-//!     fn interesting(&self) -> bool;
-//! }
-//! impl Interest for i32 {
-//!     fn interesting(&self) -> bool { *self > 0 }
-//! }
+//! // NOTE: See example_traits/lib.rs for WalkField's definition.
 //!
-//! /*
-//!  * Derive Implementation
-//!  */
 //! fn interest_derive(mut s: synstructure::Structure) -> quote::Tokens {
 //!     let body = s.fold(false, |acc, bi| quote!{
-//!         #acc || ::Interest::interesting(#bi)
+//!         #acc || example_traits::Interest::interesting(#bi)
 //!     });
 //!
-//!     s.bound_impl("::Interest", quote!{
+//!     s.bound_impl(quote!(example_traits::Interest), quote!{
 //!         fn interesting(&self) -> bool {
 //!             match *self {
 //!                 #body
@@ -113,19 +95,23 @@
 //!             }
 //!         }
 //!         expands to {
-//!             impl<T> ::Interest for A<T> where T: ::Interest {
-//!                 fn interesting(&self) -> bool {
-//!                     match *self {
-//!                         A::B(ref __binding_0, ref __binding_1,) => {
-//!                             false || ::Interest::interesting(__binding_0) ||
-//!                                 ::Interest::interesting(__binding_1)
-//!                         }
-//!                         A::C(ref __binding_0,) => {
-//!                             false || ::Interest::interesting(__binding_0)
+//!             #[allow(non_upper_case_globals)]
+//!             const _DERIVE_example_traits_Interest_FOR_A: () = {
+//!                 extern crate example_traits;
+//!                 impl<T> example_traits::Interest for A<T> where T: example_traits::Interest {
+//!                     fn interesting(&self) -> bool {
+//!                         match *self {
+//!                             A::B(ref __binding_0, ref __binding_1,) => {
+//!                                 false || example_traits::Interest::interesting(__binding_0) ||
+//!                                     example_traits::Interest::interesting(__binding_1)
+//!                             }
+//!                             A::C(ref __binding_0,) => {
+//!                                 false || example_traits::Interest::interesting(__binding_0)
+//!                             }
 //!                         }
 //!                     }
 //!                 }
-//!             }
+//!             };
 //!         }
 //!     }
 //! }
@@ -135,17 +121,22 @@
 //! which makes use of this crate, and is fairly simple.
 
 extern crate proc_macro;
+extern crate proc_macro2;
 #[macro_use]
 extern crate quote;
 extern crate syn;
+extern crate unicode_xid;
 
 use std::collections::HashSet;
 
-use syn::{Attribute, Body, ConstExpr, DeriveInput, Field, Generics, Ident, Ty, TyParamBound,
-          VariantData, WhereBoundPredicate, WherePredicate};
-use syn::visit::{self, Visitor};
+use syn::*;
+use syn::visit::{self, Visit};
 
 use quote::{ToTokens, Tokens};
+
+use unicode_xid::UnicodeXID;
+
+use proc_macro2::Span;
 
 // NOTE: This module has documentation hidden, as it only exports macros (which
 // always appear in the root of the crate) and helper methods / re-exports used
@@ -170,12 +161,9 @@ impl ToTokens for BindStyle {
     fn to_tokens(&self, tokens: &mut Tokens) {
         match *self {
             BindStyle::Move => {}
-            BindStyle::MoveMut => tokens.append("mut"),
-            BindStyle::Ref => tokens.append("ref"),
-            BindStyle::RefMut => {
-                tokens.append("ref");
-                tokens.append("mut");
-            }
+            BindStyle::MoveMut => quote_spanned!(Span::call_site() => mut).to_tokens(tokens),
+            BindStyle::Ref => quote_spanned!(Span::call_site() => ref).to_tokens(tokens),
+            BindStyle::RefMut => quote_spanned!(Span::call_site() => ref mut).to_tokens(tokens),
         }
     }
 }
@@ -195,12 +183,27 @@ fn generics_fuse(res: &mut Vec<bool>, new: &[bool]) {
 // Internal method for extracting the set of generics which have been matched
 fn fetch_generics<'a>(set: &[bool], generics: &'a Generics) -> Vec<&'a Ident> {
     let mut tys = vec![];
-    for (i, &seen) in set.iter().enumerate() {
+    for (&seen, param) in set.iter().zip(generics.params.iter()) {
         if seen {
-            tys.push(&generics.ty_params[i].ident);
+            match *param {
+                GenericParam::Type(ref tparam) => tys.push(&tparam.ident),
+                _ => {}
+            }
         }
     }
     tys
+}
+
+// Internal method for sanitizing an identifier for hygiene purposes.
+fn sanitize_ident(s: &str) -> Ident {
+    let mut res = String::with_capacity(s.len());
+    for mut c in s.chars() {
+        if ! UnicodeXID::is_xid_continue(c) { c = '_' }
+        // Deduplicate consecutive _ characters.
+        if res.ends_with('_') && c == '_' { continue }
+        res.push(c);
+    }
+    res.into()
 }
 
 /// Information about a specific binding. This contains both an `Ident`
@@ -246,7 +249,7 @@ impl<'a> BindingInfo<'a> {
     /// # extern crate syn;
     /// # use synstructure::*;
     /// # fn main() {
-    /// let di = syn::parse_derive_input(r#"
+    /// let di = syn::parse_str::<syn::DeriveInput>(r#"
     ///     enum A {
     ///         B{ a: i32, b: i32 },
     ///         C(u32),
@@ -287,7 +290,7 @@ impl<'a> BindingInfo<'a> {
     /// # extern crate syn;
     /// # use synstructure::*;
     /// # fn main() {
-    /// let di = syn::parse_derive_input(r#"
+    /// let di = syn::parse_str::<syn::DeriveInput>(r#"
     ///     struct A<T, U> {
     ///         a: Option<T>,
     ///         b: U,
@@ -312,10 +315,10 @@ impl<'a> BindingInfo<'a> {
 /// however this type may also be used as the sole variant for astruct.
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub struct VariantAst<'a> {
-    pub ident: &'a Ident,
     pub attrs: &'a [Attribute],
-    pub data: &'a VariantData,
-    pub discriminant: &'a Option<ConstExpr>,
+    pub ident: &'a Ident,
+    pub fields: &'a Fields,
+    pub discriminant: &'a Option<(token::Eq, Expr)>,
 }
 
 /// A wrapper around a `syn` `DeriveInput`'s variant which provides utilities
@@ -340,56 +343,63 @@ fn get_ty_params<'a>(field: &Field, generics: &Generics) -> Vec<bool> {
         generics: &'a Generics,
     }
 
-    impl<'a> Visitor for BoundTypeLocator<'a> {
+    impl<'a> Visit<'a> for BoundTypeLocator<'a> {
         // XXX: This also (intentionally) captures paths like T::SomeType. Is
         // this desirable?
         fn visit_ident(&mut self, id: &Ident) {
-            for (idx, i) in self.generics.ty_params.iter().enumerate() {
-                if i.ident == id {
-                    self.result[idx] = true;
+            for (idx, i) in self.generics.params.iter().enumerate() {
+                if let GenericParam::Type(ref tparam) = *i {
+                    if tparam.ident == id {
+                        self.result[idx] = true;
+                    }
                 }
             }
         }
 
-        fn visit_ty(&mut self, ty: &Ty) {
-            // If we see a type macro, we can't know what type parameters it
-            // might be binding, so we presume that it binds all of them.
-            if let Ty::Mac(_) = *ty {
-                for r in &mut self.result {
-                    *r = true;
-                }
+        fn visit_type_macro(&mut self, x: &'a TypeMacro) {
+            // If we see a type_mac declaration, then we can't know what type parameters
+            // it might be binding, so we presume it binds all of them.
+            for r in &mut self.result {
+                *r = true;
             }
-            visit::walk_ty(self, ty);
+            visit::visit_type_macro(self, x)
         }
     }
 
     let mut btl = BoundTypeLocator {
-        result: vec![false; generics.ty_params.len()],
+        result: vec![false; generics.params.len()],
         generics: generics,
     };
 
-    btl.visit_ty(&field.ty);
+    btl.visit_type(&field.ty);
 
     btl.result
 }
 
 impl<'a> VariantInfo<'a> {
     fn new(ast: VariantAst<'a>, prefix: Option<&'a Ident>, generics: &'a Generics) -> Self {
-        let bindings = match *ast.data {
-            VariantData::Unit => vec![],
-            VariantData::Tuple(ref fields) | VariantData::Struct(ref fields) => fields
-                .iter()
-                .enumerate()
-                .map(|(i, field)| {
-                    BindingInfo {
-                        binding: format!("__binding_{}", i).into(),
-                        style: BindStyle::Ref,
-                        field: field,
-                        generics: generics,
-                        seen_generics: get_ty_params(field, generics),
-                    }
-                })
-                .collect::<Vec<_>>(),
+        let bindings = match *ast.fields {
+            Fields::Unit => vec![],
+            Fields::Unnamed(FieldsUnnamed { unnamed: ref fields, .. }) |
+            Fields::Named(FieldsNamed { named: ref fields, .. }) => {
+                fields.into_iter()
+                    .enumerate()
+                    .map(|(i, field)| {
+                        BindingInfo {
+                            // XXX: This has to be call_site to avoid privacy
+                            // when deriving on private fields.
+                            binding: Ident::new(
+                                &format!("__binding_{}", i),
+                                Span::call_site(),
+                            ),
+                            style: BindStyle::Ref,
+                            field: field,
+                            generics: generics,
+                            seen_generics: get_ty_params(field, generics),
+                        }
+                    })
+                    .collect::<Vec<_>>()
+            }
         };
 
         VariantInfo {
@@ -431,7 +441,7 @@ impl<'a> VariantInfo<'a> {
     /// # extern crate syn;
     /// # use synstructure::*;
     /// # fn main() {
-    /// let di = syn::parse_derive_input(r#"
+    /// let di = syn::parse_str::<syn::DeriveInput>(r#"
     ///     enum A {
     ///         B(i32, i32),
     ///         C(u32),
@@ -451,36 +461,36 @@ impl<'a> VariantInfo<'a> {
         let mut t = Tokens::new();
         if let Some(prefix) = self.prefix {
             prefix.to_tokens(&mut t);
-            t.append("::");
+            quote!(::).to_tokens(&mut t);
         }
         self.ast.ident.to_tokens(&mut t);
-        match *self.ast.data {
-            VariantData::Unit => {
+        match *self.ast.fields {
+            Fields::Unit => {
                 assert!(self.bindings.len() == 0);
             }
-            VariantData::Tuple(..) => {
-                t.append("(");
-                for binding in &self.bindings {
-                    binding.pat().to_tokens(&mut t);
-                    t.append(",");
-                }
-                if self.omitted_fields {
-                    t.append("..");
-                }
-                t.append(")");
+            Fields::Unnamed(..) => {
+                token::Paren(Span::call_site()).surround(&mut t, |t| {
+                    for binding in &self.bindings {
+                        binding.pat().to_tokens(t);
+                        quote!(,).to_tokens(t);
+                    }
+                    if self.omitted_fields {
+                        quote!(..).to_tokens(t);
+                    }
+                })
             }
-            VariantData::Struct(..) => {
-                t.append("{");
-                for binding in &self.bindings {
-                    binding.field.ident.to_tokens(&mut t);
-                    t.append(":");
-                    binding.pat().to_tokens(&mut t);
-                    t.append(",");
-                }
-                if self.omitted_fields {
-                    t.append("..");
-                }
-                t.append("}");
+            Fields::Named(..) => {
+                token::Brace(Span::call_site()).surround(&mut t, |t| {
+                    for binding in &self.bindings {
+                        binding.field.ident.to_tokens(t);
+                        quote!(:).to_tokens(t);
+                        binding.pat().to_tokens(t);
+                        quote!(,).to_tokens(t);
+                    }
+                    if self.omitted_fields {
+                        quote!(..).to_tokens(t);
+                    }
+                })
             }
         }
         t
@@ -497,7 +507,7 @@ impl<'a> VariantInfo<'a> {
     /// # extern crate syn;
     /// # use synstructure::*;
     /// # fn main() {
-    /// let di = syn::parse_derive_input(r#"
+    /// let di = syn::parse_str::<syn::DeriveInput>(r#"
     ///     enum A {
     ///         B(usize, usize),
     ///         C{ v: usize },
@@ -529,30 +539,29 @@ impl<'a> VariantInfo<'a> {
     {
         let mut t = Tokens::new();
         if let Some(prefix) = self.prefix {
-            prefix.to_tokens(&mut t);
-            t.append("::");
+            quote!(#prefix ::).to_tokens(&mut t);
         }
         self.ast.ident.to_tokens(&mut t);
 
-        match *self.ast.data {
-            VariantData::Unit => (),
-            VariantData::Tuple(ref fields) => {
-                t.append("(");
-                for (i, field) in fields.iter().enumerate() {
-                    func(field, i).to_tokens(&mut t);
-                    t.append(",");
-                }
-                t.append(")");
+        match *self.ast.fields {
+            Fields::Unit => (),
+            Fields::Unnamed(FieldsUnnamed { ref unnamed, .. }) => {
+                token::Paren::default().surround(&mut t, |t| {
+                    for (i, field) in unnamed.into_iter().enumerate() {
+                        func(field, i).to_tokens(t);
+                        quote!(,).to_tokens(t);
+                    }
+                })
             }
-            VariantData::Struct(ref fields) => {
-                t.append("{");
-                for (i, field) in fields.iter().enumerate() {
-                    field.ident.to_tokens(&mut t);
-                    t.append(":");
-                    func(field, i).to_tokens(&mut t);
-                    t.append(",");
-                }
-                t.append("}");
+            Fields::Named(FieldsNamed { ref named, .. }) => {
+                token::Brace::default().surround(&mut t, |t| {
+                    for (i, field) in named.into_iter().enumerate() {
+                        field.ident.to_tokens(t);
+                        quote!(:).to_tokens(t);
+                        func(field, i).to_tokens(t);
+                        quote!(,).to_tokens(t);
+                    }
+                })
             }
         }
         t
@@ -571,7 +580,7 @@ impl<'a> VariantInfo<'a> {
     /// # extern crate syn;
     /// # use synstructure::*;
     /// # fn main() {
-    /// let di = syn::parse_derive_input(r#"
+    /// let di = syn::parse_str::<syn::DeriveInput>(r#"
     ///     enum A {
     ///         B(i32, i32),
     ///         C(u32),
@@ -599,9 +608,9 @@ impl<'a> VariantInfo<'a> {
         let pat = self.pat();
         let mut body = Tokens::new();
         for binding in &self.bindings {
-            body.append("{");
-            f(binding).to_tokens(&mut body);
-            body.append("}");
+            token::Brace::default().surround(&mut body, |body| {
+                f(binding).to_tokens(body);
+            });
         }
         quote!(#pat => { #body })
     }
@@ -620,7 +629,7 @@ impl<'a> VariantInfo<'a> {
     /// # extern crate syn;
     /// # use synstructure::*;
     /// # fn main() {
-    /// let di = syn::parse_derive_input(r#"
+    /// let di = syn::parse_str::<syn::DeriveInput>(r#"
     ///     enum A {
     ///         B(i32, i32),
     ///         C(u32),
@@ -669,7 +678,7 @@ impl<'a> VariantInfo<'a> {
     /// # extern crate syn;
     /// # use synstructure::*;
     /// # fn main() {
-    /// let di = syn::parse_derive_input(r#"
+    /// let di = syn::parse_str::<syn::DeriveInput>(r#"
     ///     enum A {
     ///         B{ a: i32, b: i32 },
     ///         C{ a: u32 },
@@ -728,7 +737,7 @@ impl<'a> VariantInfo<'a> {
     /// # extern crate syn;
     /// # use synstructure::*;
     /// # fn main() {
-    /// let di = syn::parse_derive_input(r#"
+    /// let di = syn::parse_str::<syn::DeriveInput>(r#"
     ///     enum A {
     ///         B(i32, i32),
     ///         C(u32),
@@ -779,7 +788,7 @@ impl<'a> VariantInfo<'a> {
     /// # extern crate syn;
     /// # use synstructure::*;
     /// # fn main() {
-    /// let di = syn::parse_derive_input(r#"
+    /// let di = syn::parse_str::<syn::DeriveInput>(r#"
     ///     enum A {
     ///         B{ a: i32, b: i32 },
     ///         C{ a: u32 },
@@ -830,7 +839,7 @@ impl<'a> VariantInfo<'a> {
     /// # extern crate syn;
     /// # use synstructure::*;
     /// # fn main() {
-    /// let di = syn::parse_derive_input(r#"
+    /// let di = syn::parse_str::<syn::DeriveInput>(r#"
     ///     struct A<T, U> {
     ///         a: Option<T>,
     ///         b: U,
@@ -866,36 +875,50 @@ impl<'a> Structure<'a> {
     /// Create a new `Structure` with the variants and fields from the passed-in
     /// `DeriveInput`.
     pub fn new(ast: &'a DeriveInput) -> Self {
-        let variants = match ast.body {
-            Body::Enum(ref variants) => variants
-                .iter()
-                .map(|v| {
-                    VariantInfo::new(
-                        VariantAst {
-                            ident: &v.ident,
-                            attrs: &v.attrs,
-                            data: &v.data,
-                            discriminant: &v.discriminant,
-                        },
-                        Some(&ast.ident),
-                        &ast.generics,
-                    )
-                })
-                .collect::<Vec<_>>(),
-            Body::Struct(ref vd) => {
-                static NONE_DISCRIMINANT: Option<ConstExpr> = None;
+        let variants = match ast.data {
+            Data::Enum(ref data) => {
+                (&data.variants).into_iter()
+                    .map(|v| {
+                        VariantInfo::new(
+                            VariantAst {
+                                attrs: &v.attrs,
+                                ident: &v.ident,
+                                fields: &v.fields,
+                                discriminant: &v.discriminant
+                            },
+                            Some(&ast.ident),
+                            &ast.generics,
+                        )
+                    })
+                    .collect::<Vec<_>>()
+            }
+            Data::Struct(ref data) => {
+                // SAFETY NOTE: Normally putting an `Expr` in static storage
+                // wouldn't be safe, because it could contain `Term` objects
+                // which use thread-local interning. However, this static always
+                // contains the value `None`. Thus, it will never contain any
+                // unsafe values.
+                struct UnsafeMakeSync(Option<(token::Eq, Expr)>);
+                unsafe impl Sync for UnsafeMakeSync {}
+                static NONE_DISCRIMINANT: UnsafeMakeSync = UnsafeMakeSync(None);
+
                 vec![
                     VariantInfo::new(
                         VariantAst {
-                            ident: &ast.ident,
                             attrs: &ast.attrs,
-                            data: &vd,
-                            discriminant: &NONE_DISCRIMINANT,
+                            ident: &ast.ident,
+                            fields: &data.fields,
+                            discriminant: &NONE_DISCRIMINANT.0,
                         },
                         None,
                         &ast.generics,
                     ),
                 ]
+            }
+            Data::Union(_) => {
+                // TODO: Consider adding support for handling unions?
+                panic!("synstructure does not handle untagged unions \
+                    (https://github.com/mystor/synstructure/issues/6)");
             }
         };
 
@@ -940,7 +963,7 @@ impl<'a> Structure<'a> {
     /// # extern crate syn;
     /// # use synstructure::*;
     /// # fn main() {
-    /// let di = syn::parse_derive_input(r#"
+    /// let di = syn::parse_str::<syn::DeriveInput>(r#"
     ///     enum A {
     ///         B(i32, i32),
     ///         C(u32),
@@ -994,7 +1017,7 @@ impl<'a> Structure<'a> {
     /// # extern crate syn;
     /// # use synstructure::*;
     /// # fn main() {
-    /// let di = syn::parse_derive_input(r#"
+    /// let di = syn::parse_str::<syn::DeriveInput>(r#"
     ///     enum A {
     ///         B(i32, i32),
     ///         C(u32),
@@ -1046,7 +1069,7 @@ impl<'a> Structure<'a> {
     /// # extern crate syn;
     /// # use synstructure::*;
     /// # fn main() {
-    /// let di = syn::parse_derive_input(r#"
+    /// let di = syn::parse_str::<syn::DeriveInput>(r#"
     ///     enum A {
     ///         B(i32, i32),
     ///         C(u32),
@@ -1104,7 +1127,7 @@ impl<'a> Structure<'a> {
     /// # extern crate syn;
     /// # use synstructure::*;
     /// # fn main() {
-    /// let di = syn::parse_derive_input(r#"
+    /// let di = syn::parse_str::<syn::DeriveInput>(r#"
     ///     enum A {
     ///         B{ a: i32, b: i32 },
     ///         C{ a: u32 },
@@ -1154,7 +1177,7 @@ impl<'a> Structure<'a> {
     /// # extern crate syn;
     /// # use synstructure::*;
     /// # fn main() {
-    /// let di = syn::parse_derive_input(r#"
+    /// let di = syn::parse_str::<syn::DeriveInput>(r#"
     ///     enum A {
     ///         B(i32, i32),
     ///         C(u32),
@@ -1209,7 +1232,7 @@ impl<'a> Structure<'a> {
     /// # extern crate syn;
     /// # use synstructure::*;
     /// # fn main() {
-    /// let di = syn::parse_derive_input(r#"
+    /// let di = syn::parse_str::<syn::DeriveInput>(r#"
     ///     enum A {
     ///         B(i32, i32),
     ///         C(u32),
@@ -1260,7 +1283,7 @@ impl<'a> Structure<'a> {
     /// # extern crate syn;
     /// # use synstructure::*;
     /// # fn main() {
-    /// let di = syn::parse_derive_input(r#"
+    /// let di = syn::parse_str::<syn::DeriveInput>(r#"
     ///     enum A {
     ///         B{ a: i32, b: i32 },
     ///         C{ a: u32 },
@@ -1311,7 +1334,7 @@ impl<'a> Structure<'a> {
     /// # extern crate syn;
     /// # use synstructure::*;
     /// # fn main() {
-    /// let di = syn::parse_derive_input(r#"
+    /// let di = syn::parse_str::<syn::DeriveInput>(r#"
     ///     enum A<T, U> {
     ///         B(T, i32),
     ///         C(Option<U>),
@@ -1345,15 +1368,31 @@ impl<'a> Structure<'a> {
     /// If the method contains any macros in type position, all parameters will
     /// be considered bound. This is because we cannot determine which type
     /// parameters are bound by type macros.
-    pub fn add_trait_bounds(&self, bound: &TyParamBound, preds: &mut Vec<WherePredicate>) {
+    pub fn add_trait_bounds(&self, bound: &TraitBound, where_clause: &mut Option<WhereClause>) {
         let mut seen = HashSet::new();
-        let mut pred = |ty: Ty| if !seen.contains(&ty) {
+        let mut pred = |ty: Type| if !seen.contains(&ty) {
             seen.insert(ty.clone());
-            preds.push(WherePredicate::BoundPredicate(WhereBoundPredicate {
-                bound_lifetimes: vec![],
+
+            // Ensure we have a where clause, because we need to use it. We
+            // can't use `get_or_insert_with`, because it isn't supported on all
+            // rustc versions we support.
+            if where_clause.is_none() {
+                *where_clause = Some(WhereClause {
+                    where_token: Default::default(),
+                    predicates: punctuated::Punctuated::new(),
+                });
+            }
+            let clause = where_clause.as_mut().unwrap();
+
+            // Add a predicate.
+            clause.predicates.push(WherePredicate::Type(PredicateType {
+                lifetimes: None,
                 bounded_ty: ty,
-                bounds: vec![bound.clone()],
-            }))
+                colon_token: Default::default(),
+                bounds: Some(punctuated::Pair::End(TypeParamBound::Trait(bound.clone())))
+                    .into_iter()
+                    .collect(),
+            }));
         };
 
         for variant in &self.variants {
@@ -1366,7 +1405,10 @@ impl<'a> Structure<'a> {
                 }
 
                 for param in binding.referenced_ty_params() {
-                    pred(Ty::Path(None, (*param).clone().into()));
+                    pred(Type::Path(TypePath {
+                        qself: None,
+                        path: (*param).clone().into(),
+                    }));
                 }
             }
         }
@@ -1395,7 +1437,7 @@ impl<'a> Structure<'a> {
     /// # extern crate syn;
     /// # use synstructure::*;
     /// # fn main() {
-    /// let di = syn::parse_derive_input(r#"
+    /// let di = syn::parse_str::<syn::DeriveInput>(r#"
     ///     enum A<T, U> {
     ///         B(T),
     ///         C(Option<U>),
@@ -1406,64 +1448,127 @@ impl<'a> Structure<'a> {
     /// s.filter_variants(|v| v.ast().ident != "B");
     ///
     /// assert_eq!(
-    ///     s.bound_impl("::krate::Trait", quote!{
+    ///     s.bound_impl(quote!(krate::Trait), quote!{
     ///         fn a() {}
     ///     }),
     ///     quote!{
-    ///         impl<T, U> ::krate::Trait for A<T, U>
-    ///             where Option<U>: ::krate::Trait,
-    ///                   U: ::krate::Trait
-    ///         {
-    ///             fn a() {}
-    ///         }
+    ///         #[allow(non_upper_case_globals)]
+    ///         const _DERIVE_krate_Trait_FOR_A: () = {
+    ///             extern crate krate;
+    ///             impl<T, U> krate::Trait for A<T, U>
+    ///                 where Option<U>: krate::Trait,
+    ///                       U: krate::Trait
+    ///             {
+    ///                 fn a() {}
+    ///             }
+    ///         };
     ///     }
     /// );
     /// # }
     /// ```
-    pub fn bound_impl<P: AsRef<str>, B: ToTokens>(&self, bound: P, body: B) -> Tokens {
-        let name = &self.ast.ident;
-        let (impl_generics, ty_generics, where_clause) = self.ast.generics.split_for_impl();
-
-        let bound = syn::parse_ty_param_bound(bound.as_ref())
-            .expect("`bound` argument must be a valid rust trait bound");
-
-        let mut where_clause = where_clause.clone();
-        self.add_trait_bounds(&bound, &mut where_clause.predicates);
-
-        quote! {
-            impl #impl_generics #bound for #name #ty_generics #where_clause {
-                #body
-            }
-        }
+    pub fn bound_impl<P: ToTokens,B: ToTokens>(&self, path: P, body: B) -> Tokens {
+        self.bound_impl_internal(
+            path.into_tokens(),
+            body.into_tokens(),
+            quote!(),
+        )
     }
 
     /// This method is the same as `bound_impl`, except also includes the
     /// `unsafe` keyword for implementing unsafe traits.
-    pub fn unsafe_bound_impl<P: AsRef<str>, B: ToTokens>(&self, path: P, body: B) -> Tokens {
-        let safe = self.bound_impl(path, body);
-        quote!(unsafe #safe)
+    pub fn unsafe_bound_impl<P: ToTokens, B: ToTokens>(&self, path: P, body: B) -> Tokens {
+        self.bound_impl_internal(
+            path.into_tokens(),
+            body.into_tokens(),
+            quote!(unsafe),
+        )
+    }
+
+    fn bound_impl_internal(&self, path: Tokens, body: Tokens, safety: Tokens) -> Tokens {
+        let name = &self.ast.ident;
+        let (impl_generics, ty_generics, where_clause) = self.ast.generics.split_for_impl();
+
+        let bound = syn::parse2::<TraitBound>(path.into())
+            .expect("`path` argument must be a valid rust trait bound");
+
+        let mut where_clause = where_clause.cloned();
+        self.add_trait_bounds(&bound, &mut where_clause);
+
+        // XXX(nika): Make sure this is in def_site?
+        let dummy_const: Ident = sanitize_ident(&format!(
+            "_DERIVE_{}_FOR_{}",
+            (&bound).into_tokens(),
+            name.into_tokens(),
+        ));
+
+        // This function is smart. If a global path is passed, no extern crate
+        // statement will be generated, however, a relative path will cause the
+        // crate which it is relative to to be imported within the current
+        // scope.
+        let mut extern_crate = quote!();
+        if bound.path.leading_colon.is_none() {
+            if let Some(ref seg) = bound.path.segments.first() {
+                let seg = seg.value();
+                extern_crate = quote! { extern crate #seg; };
+            }
+        }
+
+        quote! {
+            #[allow(non_upper_case_globals)]
+            const #dummy_const: () = {
+                #extern_crate
+                #safety impl #impl_generics #bound for #name #ty_generics #where_clause {
+                    #body
+                }
+            };
+        }
     }
 
     /// This method is like `bound_impl` but doesn't add the additional bounds
     /// to the where clause.
-    pub fn unbound_impl<P: AsRef<str>, B: ToTokens>(&self, bound: P, body: B) -> Tokens {
-        let name = &self.ast.ident;
-        let (impl_generics, ty_generics, where_clause) = self.ast.generics.split_for_impl();
-
-        let bound = syn::parse_ty_param_bound(bound.as_ref())
-            .expect("`bound` argument must be a valid rust trait bound");
-
-        quote! {
-            impl #impl_generics #bound for #name #ty_generics #where_clause {
-                #body
-            }
-        }
+    pub fn unbound_impl<P: ToTokens, B: ToTokens>(&self, path: P, body: B) -> Tokens {
+        self.unbound_impl_internal(path.into_tokens(), body.into_tokens(), quote!())
     }
 
     /// This method is the same as `unbound_impl`, except also includes the
     /// `unsafe` keyword for implementing unsafe traits.
-    pub fn unsafe_unbound_impl<P: AsRef<str>, B: ToTokens>(&self, path: P, body: B) -> Tokens {
-        let safe = self.unbound_impl(path, body);
-        quote!(unsafe #safe)
+    pub fn unsafe_unbound_impl<P: ToTokens, B: ToTokens>(&self, path: P, body: B) -> Tokens {
+        self.unbound_impl_internal(path.into_tokens(), body.into_tokens(), quote!(unsafe))
+    }
+
+    fn unbound_impl_internal(&self, path: Tokens, body: Tokens, safety: Tokens) -> Tokens {
+        let name = &self.ast.ident;
+        let (impl_generics, ty_generics, where_clause) = self.ast.generics.split_for_impl();
+
+        let bound = syn::parse2::<TraitBound>(path.into())
+            .expect("`bound` argument must be a valid rust trait bound");
+
+        let dummy_const: Ident = sanitize_ident(&format!(
+            "_DERIVE_{}_FOR_{}",
+            (&bound).into_tokens(),
+            name.into_tokens(),
+        ));
+
+        // This function is smart. If a global path is passed, no extern crate
+        // statement will be generated, however, a relative path will cause the
+        // crate which it is relative to to be imported within the current
+        // scope.
+        let mut extern_crate = quote!();
+        if bound.path.leading_colon.is_none() {
+            if let Some(ref seg) = bound.path.segments.first() {
+                let seg = seg.value();
+                extern_crate = quote! { extern crate #seg; };
+            }
+        }
+
+        quote! {
+            #[allow(non_upper_case_globals)]
+            const #dummy_const: () = {
+                #extern_crate
+                #safety impl #impl_generics #bound for #name #ty_generics #where_clause {
+                    #body
+                }
+            };
+        }
     }
 }

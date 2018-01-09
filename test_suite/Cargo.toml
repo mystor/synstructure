@@ -3,5 +3,9 @@ name = "test_suite"
 version = "0.1.0"
 authors = ["Michael Layzell <michael@thelayzells.com>"]
 
+[lib]
+path = "test.rs"
+
 [dependencies]
+example_traits = { path = "../example_traits" }
 test_macros = { path = "test_macros" }

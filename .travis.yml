@@ -1,13 +1,22 @@
 language: rust
-rust:
-- nightly
 sudo: false
+
+matrix:
+  include:
+    - rust: 1.15.0
+    - rust: stable
+    - rust: beta
+    - rust: nightly
+      script:
+        - RUST_BACKTRACE=1 cargo test --all
+
+        # We can't run synstructure's doctests with the nightly features
+        # enabled, but we can test test_suite, as it uses a real macro impl.
+        - RUST_BACKTRACE=1 cargo test -p test_suite --features proc-macro2/nightly
+
 script:
-  - |
-    cargo build &&
-    cargo test &&
-    cargo build --manifest-path test_suite/Cargo.toml &&
-    cargo test --manifest-path test_suite/Cargo.toml
+  - RUST_BACKTRACE=1 cargo test --all
+
 notifications:
   email:
     on_success: never

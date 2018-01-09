@@ -14,5 +14,14 @@ keywords = ["syn", "macros", "derive", "expand_substructure", "enum"]
 simple-derive = []
 
 [dependencies]
-syn = { version = "0.11", features = ["visit"] }
-quote = "0.3.15"
+syn = { version = "0.12", features = ["visit", "extra-traits"] }
+proc-macro2 = "0.2.1"
+quote = "0.4.2"
+unicode-xid = "0.1"
+
+[dev-dependencies]
+# Used in the documentation as an example trait crate provider.
+example_traits = { path = "example_traits" }
+
+[workspace]
+members = ["example_traits", "test_suite", "test_suite/test_macros"]
