@@ -3,7 +3,7 @@ name = "synstructure"
 version = "0.6.1"
 authors = ["Nika Layzell <nika@thelayzells.com>"]
 
-description = "expand_substructure-like helpers for syn macros 1.1 derive macros"
+description = "Helper methods and macros for custom derives"
 documentation = "https://docs.rs/synstructure"
 repository = "https://github.com/mystor/synstructure"
 readme = "README.md"

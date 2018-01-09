@@ -6,10 +6,22 @@
 //! every field, then you have come to the right place!
 //!
 //! # Example: `WalkFields`
+//! ### Trait Implementation
 //! ```
-//! # #[macro_use] extern crate synstructure;
-//! # #[macro_use] extern crate quote;
-//! // NOTE: See example_traits/lib.rs for WalkField's definition.
+//! pub trait WalkFields: std::any::Any {
+//!     fn walk_fields(&self, walk: &mut FnMut(&WalkFields));
+//! }
+//! impl WalkFields for i32 {
+//!     fn walk_fields(&self, _walk: &mut FnMut(&WalkFields)) {}
+//! }
+//! ```
+//!
+//! ### Custom Derive
+//! ```
+//! #[macro_use]
+//! extern crate synstructure;
+//! #[macro_use]
+//! extern crate quote;
 //!
 //! fn walkfields_derive(s: synstructure::Structure) -> quote::Tokens {
 //!     let body = s.each(|bi| quote!{
@@ -41,7 +53,9 @@
 //!             #[allow(non_upper_case_globals)]
 //!             const _DERIVE_example_traits_WalkFields_FOR_A: () = {
 //!                 extern crate example_traits;
-//!                 impl<T> example_traits::WalkFields for A<T> where T: example_traits::WalkFields {
+//!                 impl<T> example_traits::WalkFields for A<T>
+//!                     where T: example_traits::WalkFields
+//!                 {
 //!                     fn walk_fields(&self, walk: &mut FnMut(&example_traits::WalkFields)) {
 //!                         match *self {
 //!                             A::B(ref __binding_0, ref __binding_1,) => {
@@ -61,10 +75,22 @@
 //! ```
 //!
 //! # Example: `Interest`
+//! ### Trait Implementation
 //! ```
-//! # #[macro_use] extern crate synstructure;
-//! # #[macro_use] extern crate quote;
-//! // NOTE: See example_traits/lib.rs for WalkField's definition.
+//! pub trait Interest {
+//!     fn interesting(&self) -> bool;
+//! }
+//! impl Interest for i32 {
+//!     fn interesting(&self) -> bool { *self > 0 }
+//! }
+//! ```
+//!
+//! ### Custom Derive
+//! ```
+//! #[macro_use]
+//! extern crate synstructure;
+//! #[macro_use]
+//! extern crate quote;
 //!
 //! fn interest_derive(mut s: synstructure::Structure) -> quote::Tokens {
 //!     let body = s.fold(false, |acc, bi| quote!{
@@ -98,15 +124,19 @@
 //!             #[allow(non_upper_case_globals)]
 //!             const _DERIVE_example_traits_Interest_FOR_A: () = {
 //!                 extern crate example_traits;
-//!                 impl<T> example_traits::Interest for A<T> where T: example_traits::Interest {
+//!                 impl<T> example_traits::Interest for A<T>
+//!                     where T: example_traits::Interest
+//!                 {
 //!                     fn interesting(&self) -> bool {
 //!                         match *self {
 //!                             A::B(ref __binding_0, ref __binding_1,) => {
-//!                                 false || example_traits::Interest::interesting(__binding_0) ||
+//!                                 false ||
+//!                                     example_traits::Interest::interesting(__binding_0) ||
 //!                                     example_traits::Interest::interesting(__binding_1)
 //!                             }
 //!                             A::C(ref __binding_0,) => {
-//!                                 false || example_traits::Interest::interesting(__binding_0)
+//!                                 false ||
+//!                                     example_traits::Interest::interesting(__binding_0)
 //!                             }
 //!                         }
 //!                     }
@@ -129,7 +159,8 @@ extern crate unicode_xid;
 
 use std::collections::HashSet;
 
-use syn::*;
+use syn::{Generics, Ident, Attribute, Field, Fields, Expr, DeriveInput, TraitBound, WhereClause, GenericParam, Data, WherePredicate, TypeParamBound, Type, TypeMacro, FieldsUnnamed, FieldsNamed, PredicateType, TypePath};
+use syn::{token, punctuated};
 use syn::visit::{self, Visit};
 
 use quote::{ToTokens, Tokens};
@@ -203,7 +234,7 @@ fn sanitize_ident(s: &str) -> Ident {
         if res.ends_with('_') && c == '_' { continue }
         res.push(c);
     }
-    res.into()
+    Ident::new(&res, Span::def_site())
 }
 
 /// Information about a specific binding. This contains both an `Ident`
@@ -246,20 +277,20 @@ impl<'a> BindingInfo<'a> {
     /// ```
     /// # #[macro_use] extern crate quote;
     /// # extern crate synstructure;
-    /// # extern crate syn;
+    /// # #[macro_use] extern crate syn;
     /// # use synstructure::*;
     /// # fn main() {
-    /// let di = syn::parse_str::<syn::DeriveInput>(r#"
+    /// let di: syn::DeriveInput = parse_quote! {
     ///     enum A {
     ///         B{ a: i32, b: i32 },
     ///         C(u32),
     ///     }
-    /// "#).unwrap();
+    /// };
     /// let s = Structure::new(&di);
     ///
     /// assert_eq!(
     ///     s.variants()[0].bindings()[0].pat(),
-    ///     quote!{
+    ///     quote! {
     ///         ref __binding_0
     ///     }
     /// );
@@ -287,15 +318,15 @@ impl<'a> BindingInfo<'a> {
     /// ```
     /// # #[macro_use] extern crate quote;
     /// # extern crate synstructure;
-    /// # extern crate syn;
+    /// # #[macro_use] extern crate syn;
     /// # use synstructure::*;
     /// # fn main() {
-    /// let di = syn::parse_str::<syn::DeriveInput>(r#"
+    /// let di: syn::DeriveInput = parse_quote! {
     ///     struct A<T, U> {
     ///         a: Option<T>,
     ///         b: U,
     ///     }
-    /// "#).unwrap();
+    /// };
     /// let mut s = Structure::new(&di);
     ///
     /// assert_eq!(
@@ -311,8 +342,8 @@ impl<'a> BindingInfo<'a> {
 
 /// This type is similar to `syn`'s `Variant` type, however each of the fields
 /// are references rather than owned. When this is used as the AST for a real
-/// variant, this struct simply borrows the fields of the `syn` `Variant`,
-/// however this type may also be used as the sole variant for astruct.
+/// variant, this struct simply borrows the fields of the `syn::Variant`,
+/// however this type may also be used as the sole variant for a struct.
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub struct VariantAst<'a> {
     pub attrs: &'a [Attribute],
@@ -321,7 +352,7 @@ pub struct VariantAst<'a> {
     pub discriminant: &'a Option<(token::Eq, Expr)>,
 }
 
-/// A wrapper around a `syn` `DeriveInput`'s variant which provides utilities
+/// A wrapper around a `syn::DeriveInput`'s variant which provides utilities
 /// for destructuring `Variant`s with `match` expressions.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct VariantInfo<'a> {
@@ -438,15 +469,15 @@ impl<'a> VariantInfo<'a> {
     /// ```
     /// # #[macro_use] extern crate quote;
     /// # extern crate synstructure;
-    /// # extern crate syn;
+    /// # #[macro_use] extern crate syn;
     /// # use synstructure::*;
     /// # fn main() {
-    /// let di = syn::parse_str::<syn::DeriveInput>(r#"
+    /// let di: syn::DeriveInput = parse_quote! {
     ///     enum A {
     ///         B(i32, i32),
     ///         C(u32),
     ///     }
-    /// "#).unwrap();
+    /// };
     /// let s = Structure::new(&di);
     ///
     /// assert_eq!(
@@ -498,21 +529,22 @@ impl<'a> VariantInfo<'a> {
 
     /// Generates the token stream required to construct the current variant.
     ///
-    /// The init array initializes each of the fields in the order they are written in `variant.ast().fields`.
+    /// The init array initializes each of the fields in the order they are
+    /// written in `variant.ast().fields`.
     ///
     /// # Example
     /// ```
     /// # #[macro_use] extern crate quote;
     /// # extern crate synstructure;
-    /// # extern crate syn;
+    /// # #[macro_use] extern crate syn;
     /// # use synstructure::*;
     /// # fn main() {
-    /// let di = syn::parse_str::<syn::DeriveInput>(r#"
+    /// let di: syn::DeriveInput = parse_quote! {
     ///     enum A {
     ///         B(usize, usize),
     ///         C{ v: usize },
     ///     }
-    /// "#).unwrap();
+    /// };
     /// let s = Structure::new(&di);
     ///
     /// assert_eq!(
@@ -577,15 +609,15 @@ impl<'a> VariantInfo<'a> {
     /// ```
     /// # #[macro_use] extern crate quote;
     /// # extern crate synstructure;
-    /// # extern crate syn;
+    /// # #[macro_use] extern crate syn;
     /// # use synstructure::*;
     /// # fn main() {
-    /// let di = syn::parse_str::<syn::DeriveInput>(r#"
+    /// let di: syn::DeriveInput = parse_quote! {
     ///     enum A {
     ///         B(i32, i32),
     ///         C(u32),
     ///     }
-    /// "#).unwrap();
+    /// };
     /// let s = Structure::new(&di);
     ///
     /// assert_eq!(
@@ -626,15 +658,15 @@ impl<'a> VariantInfo<'a> {
     /// ```
     /// # #[macro_use] extern crate quote;
     /// # extern crate synstructure;
-    /// # extern crate syn;
+    /// # #[macro_use] extern crate syn;
     /// # use synstructure::*;
     /// # fn main() {
-    /// let di = syn::parse_str::<syn::DeriveInput>(r#"
+    /// let di: syn::DeriveInput = parse_quote! {
     ///     enum A {
     ///         B(i32, i32),
     ///         C(u32),
     ///     }
-    /// "#).unwrap();
+    /// };
     /// let s = Structure::new(&di);
     ///
     /// assert_eq!(
@@ -675,15 +707,15 @@ impl<'a> VariantInfo<'a> {
     /// ```
     /// # #[macro_use] extern crate quote;
     /// # extern crate synstructure;
-    /// # extern crate syn;
+    /// # #[macro_use] extern crate syn;
     /// # use synstructure::*;
     /// # fn main() {
-    /// let di = syn::parse_str::<syn::DeriveInput>(r#"
+    /// let di: syn::DeriveInput = parse_quote! {
     ///     enum A {
     ///         B{ a: i32, b: i32 },
     ///         C{ a: u32 },
     ///     }
-    /// "#).unwrap();
+    /// };
     /// let mut s = Structure::new(&di);
     ///
     /// s.variants_mut()[0].filter(|bi| {
@@ -734,15 +766,15 @@ impl<'a> VariantInfo<'a> {
     /// ```
     /// # #[macro_use] extern crate quote;
     /// # extern crate synstructure;
-    /// # extern crate syn;
+    /// # #[macro_use] extern crate syn;
     /// # use synstructure::*;
     /// # fn main() {
-    /// let di = syn::parse_str::<syn::DeriveInput>(r#"
+    /// let di: syn::DeriveInput = parse_quote! {
     ///     enum A {
     ///         B(i32, i32),
     ///         C(u32),
     ///     }
-    /// "#).unwrap();
+    /// };
     /// let mut s = Structure::new(&di);
     ///
     /// s.variants_mut()[0].bind_with(|bi| BindStyle::RefMut);
@@ -785,15 +817,15 @@ impl<'a> VariantInfo<'a> {
     /// ```
     /// # #[macro_use] extern crate quote;
     /// # extern crate synstructure;
-    /// # extern crate syn;
+    /// # #[macro_use] extern crate syn;
     /// # use synstructure::*;
     /// # fn main() {
-    /// let di = syn::parse_str::<syn::DeriveInput>(r#"
+    /// let di: syn::DeriveInput = parse_quote! {
     ///     enum A {
     ///         B{ a: i32, b: i32 },
     ///         C{ a: u32 },
     ///     }
-    /// "#).unwrap();
+    /// };
     /// let mut s = Structure::new(&di);
     ///
     /// s.variants_mut()[0].binding_name(|bi, i| bi.ident.clone().unwrap());
@@ -836,15 +868,15 @@ impl<'a> VariantInfo<'a> {
     /// ```
     /// # #[macro_use] extern crate quote;
     /// # extern crate synstructure;
-    /// # extern crate syn;
+    /// # #[macro_use] extern crate syn;
     /// # use synstructure::*;
     /// # fn main() {
-    /// let di = syn::parse_str::<syn::DeriveInput>(r#"
+    /// let di: syn::DeriveInput = parse_quote! {
     ///     struct A<T, U> {
     ///         a: Option<T>,
     ///         b: U,
     ///     }
-    /// "#).unwrap();
+    /// };
     /// let mut s = Structure::new(&di);
     ///
     /// assert_eq!(
@@ -862,7 +894,7 @@ impl<'a> VariantInfo<'a> {
     }
 }
 
-/// A wrapper around a `syn` `DeriveInput` which provides utilities for creating
+/// A wrapper around a `syn::DeriveInput` which provides utilities for creating
 /// custom derive trait implementations.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Structure<'a> {
@@ -916,7 +948,6 @@ impl<'a> Structure<'a> {
                 ]
             }
             Data::Union(_) => {
-                // TODO: Consider adding support for handling unions?
                 panic!("synstructure does not handle untagged unions \
                     (https://github.com/mystor/synstructure/issues/6)");
             }
@@ -960,15 +991,15 @@ impl<'a> Structure<'a> {
     /// ```
     /// # #[macro_use] extern crate quote;
     /// # extern crate synstructure;
-    /// # extern crate syn;
+    /// # #[macro_use] extern crate syn;
     /// # use synstructure::*;
     /// # fn main() {
-    /// let di = syn::parse_str::<syn::DeriveInput>(r#"
+    /// let di: syn::DeriveInput = parse_quote! {
     ///     enum A {
     ///         B(i32, i32),
     ///         C(u32),
     ///     }
-    /// "#).unwrap();
+    /// };
     /// let s = Structure::new(&di);
     ///
     /// assert_eq!(
@@ -1014,15 +1045,15 @@ impl<'a> Structure<'a> {
     /// ```
     /// # #[macro_use] extern crate quote;
     /// # extern crate synstructure;
-    /// # extern crate syn;
+    /// # #[macro_use] extern crate syn;
     /// # use synstructure::*;
     /// # fn main() {
-    /// let di = syn::parse_str::<syn::DeriveInput>(r#"
+    /// let di: syn::DeriveInput = parse_quote! {
     ///     enum A {
     ///         B(i32, i32),
     ///         C(u32),
     ///     }
-    /// "#).unwrap();
+    /// };
     /// let s = Structure::new(&di);
     ///
     /// assert_eq!(
@@ -1066,15 +1097,15 @@ impl<'a> Structure<'a> {
     /// ```
     /// # #[macro_use] extern crate quote;
     /// # extern crate synstructure;
-    /// # extern crate syn;
+    /// # #[macro_use] extern crate syn;
     /// # use synstructure::*;
     /// # fn main() {
-    /// let di = syn::parse_str::<syn::DeriveInput>(r#"
+    /// let di: syn::DeriveInput = parse_quote! {
     ///     enum A {
     ///         B(i32, i32),
     ///         C(u32),
     ///     }
-    /// "#).unwrap();
+    /// };
     /// let s = Structure::new(&di);
     ///
     /// assert_eq!(
@@ -1124,15 +1155,15 @@ impl<'a> Structure<'a> {
     /// ```
     /// # #[macro_use] extern crate quote;
     /// # extern crate synstructure;
-    /// # extern crate syn;
+    /// # #[macro_use] extern crate syn;
     /// # use synstructure::*;
     /// # fn main() {
-    /// let di = syn::parse_str::<syn::DeriveInput>(r#"
+    /// let di: syn::DeriveInput = parse_quote! {
     ///     enum A {
     ///         B{ a: i32, b: i32 },
     ///         C{ a: u32 },
     ///     }
-    /// "#).unwrap();
+    /// };
     /// let mut s = Structure::new(&di);
     ///
     /// s.filter(|bi| { bi.ast().ident == Some("a".into()) });
@@ -1174,15 +1205,16 @@ impl<'a> Structure<'a> {
     /// ```
     /// # #[macro_use] extern crate quote;
     /// # extern crate synstructure;
-    /// # extern crate syn;
+    /// # #[macro_use] extern crate syn;
     /// # use synstructure::*;
     /// # fn main() {
-    /// let di = syn::parse_str::<syn::DeriveInput>(r#"
+    /// let di: syn::DeriveInput = parse_quote! {
     ///     enum A {
     ///         B(i32, i32),
     ///         C(u32),
     ///     }
-    /// "#).unwrap();
+    /// };
+    ///
     /// let mut s = Structure::new(&di);
     ///
     /// s.filter_variants(|v| v.ast().ident != "B");
@@ -1229,15 +1261,15 @@ impl<'a> Structure<'a> {
     /// ```
     /// # #[macro_use] extern crate quote;
     /// # extern crate synstructure;
-    /// # extern crate syn;
+    /// # #[macro_use] extern crate syn;
     /// # use synstructure::*;
     /// # fn main() {
-    /// let di = syn::parse_str::<syn::DeriveInput>(r#"
+    /// let di: syn::DeriveInput = parse_quote! {
     ///     enum A {
     ///         B(i32, i32),
     ///         C(u32),
     ///     }
-    /// "#).unwrap();
+    /// };
     /// let mut s = Structure::new(&di);
     ///
     /// s.bind_with(|bi| BindStyle::RefMut);
@@ -1280,15 +1312,15 @@ impl<'a> Structure<'a> {
     /// ```
     /// # #[macro_use] extern crate quote;
     /// # extern crate synstructure;
-    /// # extern crate syn;
+    /// # #[macro_use] extern crate syn;
     /// # use synstructure::*;
     /// # fn main() {
-    /// let di = syn::parse_str::<syn::DeriveInput>(r#"
+    /// let di: syn::DeriveInput = parse_quote! {
     ///     enum A {
     ///         B{ a: i32, b: i32 },
     ///         C{ a: u32 },
     ///     }
-    /// "#).unwrap();
+    /// };
     /// let mut s = Structure::new(&di);
     ///
     /// s.binding_name(|bi, i| bi.ident.clone().unwrap());
@@ -1331,15 +1363,15 @@ impl<'a> Structure<'a> {
     /// ```
     /// # #[macro_use] extern crate quote;
     /// # extern crate synstructure;
-    /// # extern crate syn;
+    /// # #[macro_use] extern crate syn;
     /// # use synstructure::*;
     /// # fn main() {
-    /// let di = syn::parse_str::<syn::DeriveInput>(r#"
+    /// let di: syn::DeriveInput = parse_quote! {
     ///     enum A<T, U> {
     ///         B(T, i32),
     ///         C(Option<U>),
     ///     }
-    /// "#).unwrap();
+    /// };
     /// let mut s = Structure::new(&di);
     ///
     /// s.filter_variants(|v| v.ast().ident != "C");
@@ -1420,6 +1452,17 @@ impl<'a> Structure<'a> {
     /// This method also adds where clauses to the impl requiring that all
     /// referenced type parmaeters implement the trait `path`.
     ///
+    /// # Hygiene and Paths
+    ///
+    /// This method wraps the impl block inside of a `const` (see the example
+    /// below). In this scope, the first segment of the passed-in path is
+    /// `extern crate`-ed in. If you don't want to generate that `extern crate`
+    /// item, use a global path.
+    ///
+    /// This means that if you are implementing `my_crate::Trait`, you simply
+    /// write `s.bound_impl(quote!(my_crate::Trait), quote!(...))`, and for the
+    /// entirety of the definition, you can refer to your crate as `my_crate`.
+    ///
     /// # Caveat
     ///
     /// If the method contains any macros in type position, all parameters will
@@ -1428,21 +1471,21 @@ impl<'a> Structure<'a> {
     ///
     /// # Panics
     ///
-    /// Panics if the path string parameter is not a valid TyParamBound.
+    /// Panics if the path string parameter is not a valid `TraitBound`.
     ///
     /// # Example
     /// ```
     /// # #[macro_use] extern crate quote;
     /// # extern crate synstructure;
-    /// # extern crate syn;
+    /// # #[macro_use] extern crate syn;
     /// # use synstructure::*;
     /// # fn main() {
-    /// let di = syn::parse_str::<syn::DeriveInput>(r#"
+    /// let di: syn::DeriveInput = parse_quote! {
     ///     enum A<T, U> {
     ///         B(T),
     ///         C(Option<U>),
     ///     }
-    /// "#).unwrap();
+    /// };
     /// let mut s = Structure::new(&di);
     ///
     /// s.filter_variants(|v| v.ast().ident != "B");
@@ -1467,24 +1510,217 @@ impl<'a> Structure<'a> {
     /// # }
     /// ```
     pub fn bound_impl<P: ToTokens,B: ToTokens>(&self, path: P, body: B) -> Tokens {
-        self.bound_impl_internal(
+        self.impl_internal(
             path.into_tokens(),
             body.into_tokens(),
             quote!(),
+            true,
         )
     }
 
-    /// This method is the same as `bound_impl`, except also includes the
-    /// `unsafe` keyword for implementing unsafe traits.
+    /// Creates an `impl` block with the required generic type fields filled in
+    /// to implement the unsafe trait `path`.
+    ///
+    /// This method also adds where clauses to the impl requiring that all
+    /// referenced type parmaeters implement the trait `path`.
+    ///
+    /// # Hygiene and Paths
+    ///
+    /// This method wraps the impl block inside of a `const` (see the example
+    /// below). In this scope, the first segment of the passed-in path is
+    /// `extern crate`-ed in. If you don't want to generate that `extern crate`
+    /// item, use a global path.
+    ///
+    /// This means that if you are implementing `my_crate::Trait`, you simply
+    /// write `s.bound_impl(quote!(my_crate::Trait), quote!(...))`, and for the
+    /// entirety of the definition, you can refer to your crate as `my_crate`.
+    ///
+    /// # Caveat
+    ///
+    /// If the method contains any macros in type position, all parameters will
+    /// be considered bound. This is because we cannot determine which type
+    /// parameters are bound by type macros.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the path string parameter is not a valid `TraitBound`.
+    ///
+    /// # Example
+    /// ```
+    /// # #[macro_use] extern crate quote;
+    /// # extern crate synstructure;
+    /// # #[macro_use] extern crate syn;
+    /// # use synstructure::*;
+    /// # fn main() {
+    /// let di: syn::DeriveInput = parse_quote! {
+    ///     enum A<T, U> {
+    ///         B(T),
+    ///         C(Option<U>),
+    ///     }
+    /// };
+    /// let mut s = Structure::new(&di);
+    ///
+    /// s.filter_variants(|v| v.ast().ident != "B");
+    ///
+    /// assert_eq!(
+    ///     s.unsafe_bound_impl(quote!(krate::Trait), quote!{
+    ///         fn a() {}
+    ///     }),
+    ///     quote!{
+    ///         #[allow(non_upper_case_globals)]
+    ///         const _DERIVE_krate_Trait_FOR_A: () = {
+    ///             extern crate krate;
+    ///             unsafe impl<T, U> krate::Trait for A<T, U>
+    ///                 where Option<U>: krate::Trait,
+    ///                       U: krate::Trait
+    ///             {
+    ///                 fn a() {}
+    ///             }
+    ///         };
+    ///     }
+    /// );
+    /// # }
+    /// ```
     pub fn unsafe_bound_impl<P: ToTokens, B: ToTokens>(&self, path: P, body: B) -> Tokens {
-        self.bound_impl_internal(
+        self.impl_internal(
             path.into_tokens(),
             body.into_tokens(),
             quote!(unsafe),
+            true,
         )
     }
 
-    fn bound_impl_internal(&self, path: Tokens, body: Tokens, safety: Tokens) -> Tokens {
+    /// Creates an `impl` block with the required generic type fields filled in
+    /// to implement the trait `path`.
+    ///
+    /// This method will not add any where clauses to the impl.
+    ///
+    /// # Hygiene and Paths
+    ///
+    /// This method wraps the impl block inside of a `const` (see the example
+    /// below). In this scope, the first segment of the passed-in path is
+    /// `extern crate`-ed in. If you don't want to generate that `extern crate`
+    /// item, use a global path.
+    ///
+    /// This means that if you are implementing `my_crate::Trait`, you simply
+    /// write `s.bound_impl(quote!(my_crate::Trait), quote!(...))`, and for the
+    /// entirety of the definition, you can refer to your crate as `my_crate`.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the path string parameter is not a valid `TraitBound`.
+    ///
+    /// # Example
+    /// ```
+    /// # #[macro_use] extern crate quote;
+    /// # extern crate synstructure;
+    /// # #[macro_use] extern crate syn;
+    /// # use synstructure::*;
+    /// # fn main() {
+    /// let di: syn::DeriveInput = parse_quote! {
+    ///     enum A<T, U> {
+    ///         B(T),
+    ///         C(Option<U>),
+    ///     }
+    /// };
+    /// let mut s = Structure::new(&di);
+    ///
+    /// s.filter_variants(|v| v.ast().ident != "B");
+    ///
+    /// assert_eq!(
+    ///     s.unbound_impl(quote!(krate::Trait), quote!{
+    ///         fn a() {}
+    ///     }),
+    ///     quote!{
+    ///         #[allow(non_upper_case_globals)]
+    ///         const _DERIVE_krate_Trait_FOR_A: () = {
+    ///             extern crate krate;
+    ///             impl<T, U> krate::Trait for A<T, U> {
+    ///                 fn a() {}
+    ///             }
+    ///         };
+    ///     }
+    /// );
+    /// # }
+    /// ```
+    pub fn unbound_impl<P: ToTokens, B: ToTokens>(&self, path: P, body: B) -> Tokens {
+        self.impl_internal(
+            path.into_tokens(),
+            body.into_tokens(),
+            quote!(),
+            false,
+        )
+    }
+
+    /// Creates an `impl` block with the required generic type fields filled in
+    /// to implement the unsafe trait `path`.
+    ///
+    /// This method will not add any where clauses to the impl.
+    ///
+    /// # Hygiene and Paths
+    ///
+    /// This method wraps the impl block inside of a `const` (see the example
+    /// below). In this scope, the first segment of the passed-in path is
+    /// `extern crate`-ed in. If you don't want to generate that `extern crate`
+    /// item, use a global path.
+    ///
+    /// This means that if you are implementing `my_crate::Trait`, you simply
+    /// write `s.bound_impl(quote!(my_crate::Trait), quote!(...))`, and for the
+    /// entirety of the definition, you can refer to your crate as `my_crate`.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the path string parameter is not a valid `TraitBound`.
+    ///
+    /// # Example
+    /// ```
+    /// # #[macro_use] extern crate quote;
+    /// # extern crate synstructure;
+    /// # #[macro_use] extern crate syn;
+    /// # use synstructure::*;
+    /// # fn main() {
+    /// let di: syn::DeriveInput = parse_quote! {
+    ///     enum A<T, U> {
+    ///         B(T),
+    ///         C(Option<U>),
+    ///     }
+    /// };
+    /// let mut s = Structure::new(&di);
+    ///
+    /// s.filter_variants(|v| v.ast().ident != "B");
+    ///
+    /// assert_eq!(
+    ///     s.unsafe_unbound_impl(quote!(krate::Trait), quote!{
+    ///         fn a() {}
+    ///     }),
+    ///     quote!{
+    ///         #[allow(non_upper_case_globals)]
+    ///         const _DERIVE_krate_Trait_FOR_A: () = {
+    ///             extern crate krate;
+    ///             unsafe impl<T, U> krate::Trait for A<T, U> {
+    ///                 fn a() {}
+    ///             }
+    ///         };
+    ///     }
+    /// );
+    /// # }
+    /// ```
+    pub fn unsafe_unbound_impl<P: ToTokens, B: ToTokens>(&self, path: P, body: B) -> Tokens {
+        self.impl_internal(
+            path.into_tokens(),
+            body.into_tokens(),
+            quote!(unsafe),
+            false,
+        )
+    }
+
+    fn impl_internal(
+        &self,
+        path: Tokens,
+        body: Tokens,
+        safety: Tokens,
+        add_bounds: bool,
+    ) -> Tokens {
         let name = &self.ast.ident;
         let (impl_generics, ty_generics, where_clause) = self.ast.generics.split_for_impl();
 
@@ -1492,56 +1728,9 @@ impl<'a> Structure<'a> {
             .expect("`path` argument must be a valid rust trait bound");
 
         let mut where_clause = where_clause.cloned();
-        self.add_trait_bounds(&bound, &mut where_clause);
-
-        // XXX(nika): Make sure this is in def_site?
-        let dummy_const: Ident = sanitize_ident(&format!(
-            "_DERIVE_{}_FOR_{}",
-            (&bound).into_tokens(),
-            name.into_tokens(),
-        ));
-
-        // This function is smart. If a global path is passed, no extern crate
-        // statement will be generated, however, a relative path will cause the
-        // crate which it is relative to to be imported within the current
-        // scope.
-        let mut extern_crate = quote!();
-        if bound.path.leading_colon.is_none() {
-            if let Some(ref seg) = bound.path.segments.first() {
-                let seg = seg.value();
-                extern_crate = quote! { extern crate #seg; };
-            }
+        if add_bounds {
+            self.add_trait_bounds(&bound, &mut where_clause);
         }
-
-        quote! {
-            #[allow(non_upper_case_globals)]
-            const #dummy_const: () = {
-                #extern_crate
-                #safety impl #impl_generics #bound for #name #ty_generics #where_clause {
-                    #body
-                }
-            };
-        }
-    }
-
-    /// This method is like `bound_impl` but doesn't add the additional bounds
-    /// to the where clause.
-    pub fn unbound_impl<P: ToTokens, B: ToTokens>(&self, path: P, body: B) -> Tokens {
-        self.unbound_impl_internal(path.into_tokens(), body.into_tokens(), quote!())
-    }
-
-    /// This method is the same as `unbound_impl`, except also includes the
-    /// `unsafe` keyword for implementing unsafe traits.
-    pub fn unsafe_unbound_impl<P: ToTokens, B: ToTokens>(&self, path: P, body: B) -> Tokens {
-        self.unbound_impl_internal(path.into_tokens(), body.into_tokens(), quote!(unsafe))
-    }
-
-    fn unbound_impl_internal(&self, path: Tokens, body: Tokens, safety: Tokens) -> Tokens {
-        let name = &self.ast.ident;
-        let (impl_generics, ty_generics, where_clause) = self.ast.generics.split_for_impl();
-
-        let bound = syn::parse2::<TraitBound>(path.into())
-            .expect("`bound` argument must be a valid rust trait bound");
 
         let dummy_const: Ident = sanitize_ident(&format!(
             "_DERIVE_{}_FOR_{}",

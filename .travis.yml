@@ -8,14 +8,14 @@ matrix:
     - rust: beta
     - rust: nightly
       script:
-        - RUST_BACKTRACE=1 cargo test --all
+        - RUST_BACKTRACE=1 cargo test --all --features simple-derive
 
         # We can't run synstructure's doctests with the nightly features
         # enabled, but we can test test_suite, as it uses a real macro impl.
-        - RUST_BACKTRACE=1 cargo test -p test_suite --features proc-macro2/nightly
+        - RUST_BACKTRACE=1 cargo test -p test_suite --features "proc-macro2/nightly simple-derive"
 
 script:
-  - RUST_BACKTRACE=1 cargo test --all
+  - RUST_BACKTRACE=1 cargo test --all --features simple-derive
 
 notifications:
   email:

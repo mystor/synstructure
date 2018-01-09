@@ -19,3 +19,35 @@ fn interest_derive(structure: synstructure::Structure) -> quote::Tokens {
         }
     })
 }
+
+#[test]
+fn test() {
+    test_derive! {
+        interest_derive {
+            struct A {
+                a: i32,
+                b: i32,
+            }
+        }
+        expands to {
+            #[allow(non_upper_case_globals)]
+            const _DERIVE_example_traits_Interest_FOR_A: () = {
+                extern crate example_traits;
+                impl example_traits::Interest for A {
+                    fn interesting(&self) -> bool {
+                        match *self {
+                            A {
+                                a: ref __binding_0,
+                                b: ref __binding_1,
+                            } => {
+                                false ||
+                                    example_traits::Interest::interesting(__binding_0) ||
+                                    example_traits::Interest::interesting(__binding_1)
+                            }
+                        }
+                    }
+                }
+            };
+        }
+    }
+}
