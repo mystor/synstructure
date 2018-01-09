@@ -1920,22 +1920,11 @@ impl<'a> Structure<'a> {
     pub fn gen_impl(&self, cfg: Tokens) -> Tokens {
         use syn::buffer::{TokenBuffer, Cursor};
         use syn::synom::PResult;
-        use proc_macro2::TokenTree;
+        use proc_macro2::TokenStream;
 
         /* Parsing Logic */
-        let buf = TokenBuffer::new2(cfg.into());
-
-        fn get_tt(c: Cursor) -> PResult<TokenTree> {
-            if let Some((tt, c)) = c.token_tree() {
-                Ok((tt, c))
-            } else {
-                let ((), _) = reject!(c,)?;
-                unreachable!()
-            }
-        }
-
         fn parse_gen_impl(c: Cursor)
-            -> PResult<(Option<token::Unsafe>, TraitBound, TokenTree)>
+            -> PResult<(Option<token::Unsafe>, TraitBound, TokenStream)>
         {
             // `gen`
             let (id, c) = syn!(c, Ident)?;
@@ -1961,19 +1950,19 @@ impl<'a> Structure<'a> {
             let (_, c) = do_parse!(c, syn!(Token![@]) >> keyword!(Self) >> (()))
                 .expect("Expected `@Self` after `for`");
 
-            // The body of the impl
-            let (body, c) = get_tt(c)
+            let ((_, body), c) = braces!(c, syn!(TokenStream))
                 .expect("Expected an impl body after `@Self`");
 
             Ok(((unsafe_kw, bound, body), c))
         }
 
+        let buf = TokenBuffer::new2(cfg.into());
         let mut c = buf.begin();
         let mut before = vec![];
         let ((unsafe_kw, bound, body), after) = loop {
             if let Ok((gi, c2)) = parse_gen_impl(c) {
                 break (gi, c2.token_stream());
-            } else if let Ok((tt, c2)) = get_tt(c) {
+            } else if let Some((tt, c2)) = c.token_tree() {
                 c = c2;
                 before.push(tt);
             } else {
@@ -1998,9 +1987,85 @@ impl<'a> Structure<'a> {
             #[allow(non_upper_case_globals)]
             const #dummy_const: () = {
                 #(#before)*
-                #unsafe_kw impl #impl_generics #bound for #name #ty_generics #where_clause #body
+                #unsafe_kw impl #impl_generics #bound for #name #ty_generics #where_clause {
+                    #body
+                }
                 #after
             };
         }
     }
+}
+
+/// Dumps an unpretty version of a tokenstream. Takes any type which implements
+/// `Display`.
+///
+/// This is mostly useful for visualizing the output of a procedural macro, as
+/// it makes it marginally more readable. It is used in the implementation of
+/// `test_derive!` to unprettily print the output.
+///
+/// # Stability
+///
+/// The stability of the output of this function is not guaranteed. Do not
+/// assert that the output of this function does not change between minor
+/// versions.
+///
+/// # Example
+///
+/// ```
+/// # extern crate synstructure;
+/// # #[macro_use] extern crate quote;
+/// # fn main() {
+/// assert_eq!(
+///     synstructure::unpretty_print(quote! {
+///         #[allow(non_upper_case_globals)]
+///         const _DERIVE_krate_Trait_FOR_A: () = {
+///             extern crate krate;
+///             impl<T, U> krate::Trait for A<T, U>
+///             where
+///                 Option<U>: krate::Trait,
+///                 U: krate::Trait
+///             {
+///                 fn a() {}
+///             }
+///         };
+///     }),
+///     "# [
+///     allow (
+///         non_upper_case_globals )
+///     ]
+/// const _DERIVE_krate_Trait_FOR_A : (
+///     )
+/// = {
+///     extern crate krate ;
+///     impl < T , U > krate :: Trait for A < T , U > where Option < U > : krate :: Trait , U : krate :: Trait {
+///         fn a (
+///             )
+///         {
+///             }
+///         }
+///     }
+/// ;
+/// "
+/// )
+/// # }
+/// ```
+pub fn unpretty_print<T: std::fmt::Display>(ts: T) -> String {
+    let mut res = String::new();
+
+    let raw_s = ts.to_string();
+    let mut s = &raw_s[..];
+    let mut indent = 0;
+    while let Some(i) = s.find(&['(', '{', '[', ')', '}', ']', ';'][..]) {
+        match &s[i..i+1] {
+            "(" | "{" | "[" => indent += 1,
+            ")" | "}" | "]" => indent -= 1,
+            _ => {}
+        }
+        res.push_str(&s[..i+1]);
+        res.push('\n');
+        for _ in 0..indent { res.push_str("    "); }
+        s = s[i+1..].trim_left_matches(' ');
+    }
+    res.push_str(s);
+    res
 }

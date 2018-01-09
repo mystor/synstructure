@@ -129,7 +129,23 @@ macro_rules! test_derive {
             let mut expected_toks = $crate::macros::Tokens::new();
             expected_toks.append_all(expected);
 
-            assert_eq!(res, expected_toks)
+            if res != expected_toks {
+                panic!("\
+test_derive failed:
+expected:
+```
+{}
+```
+
+got:
+```
+{}
+```\n",
+                    $crate::unpretty_print(&expected_toks),
+                    $crate::unpretty_print(&res),
+                );
+            }
+            // assert_eq!(res, expected_toks)
         }
     };
 }
