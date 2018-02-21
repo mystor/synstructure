@@ -916,6 +916,7 @@ pub struct Structure<'a> {
     variants: Vec<VariantInfo<'a>>,
     omitted_variants: bool,
     ast: &'a DeriveInput,
+    extra_impl: Vec<GenericParam>,
 }
 
 impl<'a> Structure<'a> {
@@ -972,6 +973,7 @@ impl<'a> Structure<'a> {
             variants: variants,
             omitted_variants: false,
             ast: ast,
+            extra_impl: vec![],
         }
     }
 
@@ -1407,6 +1409,54 @@ impl<'a> Structure<'a> {
         fetch_generics(&flags, &self.ast.generics)
     }
 
+    /// Adds an `impl<>` generic parameter.
+    /// This can be used when the trait to be derived needs some extra generic parameters.
+    ///
+    /// # Example
+    /// ```
+    /// # #![recursion_limit="128"]
+    /// # #[macro_use] extern crate quote;
+    /// # extern crate synstructure;
+    /// # #[macro_use] extern crate syn;
+    /// # use synstructure::*;
+    /// # fn main() {
+    /// let di: syn::DeriveInput = parse_quote! {
+    ///     enum A<T, U> {
+    ///         B(T),
+    ///         C(Option<U>),
+    ///     }
+    /// };
+    /// let mut s = Structure::new(&di);
+    /// let generic: syn::GenericParam = parse_quote!(X: krate::AnotherTrait);
+    ///
+    /// assert_eq!(
+    ///     s.add_impl_generic(generic)
+    ///         .bound_impl(quote!(krate::Trait<X>),
+    ///         quote!{
+    ///                 fn a() {}
+    ///         }
+    ///     ),
+    ///     quote!{
+    ///         #[allow(non_upper_case_globals)]
+    ///         const _DERIVE_krate_Trait_X_FOR_A: () = {
+    ///             extern crate krate;
+    ///             impl<T, U, X: krate::AnotherTrait> krate::Trait<X> for A<T, U>
+    ///                 where T : krate :: Trait < X >,
+    ///                       Option<U>: krate::Trait<X>,
+    ///                       U: krate::Trait<X>
+    ///             {
+    ///                 fn a() {}
+    ///             }
+    ///         };
+    ///     }
+    /// );
+    /// # }
+    /// ```
+    pub fn add_impl_generic(&mut self, param: GenericParam) -> &mut Self {
+        self.extra_impl.push(param);
+        self
+    }
+
     /// Add trait bounds for a trait with the given path for each type parmaeter
     /// referenced in the types of non-filtered fields.
     ///
@@ -1746,7 +1796,10 @@ impl<'a> Structure<'a> {
         add_bounds: bool,
     ) -> Tokens {
         let name = &self.ast.ident;
-        let (impl_generics, ty_generics, where_clause) = self.ast.generics.split_for_impl();
+        let mut gen_clone = self.ast.generics.clone();
+        gen_clone.params.extend(self.extra_impl.clone().into_iter());
+        let (impl_generics, _, _) = gen_clone.split_for_impl();
+        let (_, ty_generics, where_clause) = self.ast.generics.split_for_impl();
 
         let bound = syn::parse2::<TraitBound>(path.into())
             .expect("`path` argument must be a valid rust trait bound");
