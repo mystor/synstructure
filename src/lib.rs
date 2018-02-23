@@ -167,12 +167,9 @@ extern crate unicode_xid;
 
 use std::collections::HashSet;
 
-use syn::{
-    Generics, Ident, Attribute, Field, Fields, Expr, DeriveInput,
-    TraitBound, WhereClause, GenericParam, Data, WherePredicate,
-    TypeParamBound, Type, TypeMacro, FieldsUnnamed, FieldsNamed,
-    PredicateType, TypePath, token, punctuated,
-};
+use syn::{punctuated, token, Attribute, Data, DeriveInput, Expr, Field, Fields, FieldsNamed,
+          FieldsUnnamed, GenericParam, Generics, Ident, PredicateType, TraitBound, Type,
+          TypeMacro, TypeParamBound, TypePath, WhereClause, WherePredicate};
 use syn::visit::{self, Visit};
 
 // re-export the quote! macro so we can depend on it being around in our macro's
@@ -942,6 +939,13 @@ impl<'a> VariantInfo<'a> {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Copy)]
+pub enum BoundsToAdd {
+    None,
+    Fields,
+    All,
+}
+
 /// A wrapper around a `syn::DeriveInput` which provides utilities for creating
 /// custom derive trait implementations.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -950,6 +954,7 @@ pub struct Structure<'a> {
     omitted_variants: bool,
     ast: &'a DeriveInput,
     extra_impl: Vec<GenericParam>,
+    bounds: BoundsToAdd,
 }
 
 impl<'a> Structure<'a> {
@@ -1007,6 +1012,7 @@ impl<'a> Structure<'a> {
             omitted_variants: false,
             ast: ast,
             extra_impl: vec![],
+            bounds: BoundsToAdd::All,
         }
     }
 
@@ -1490,6 +1496,11 @@ impl<'a> Structure<'a> {
         self
     }
 
+    pub fn bounds(&mut self, bounds: BoundsToAdd) -> &mut Self {
+        self.bounds = bounds;
+        self
+    }
+
     /// Add trait bounds for a trait with the given path for each type parmaeter
     /// referenced in the types of non-filtered fields.
     ///
@@ -1499,48 +1510,66 @@ impl<'a> Structure<'a> {
     /// be considered bound. This is because we cannot determine which type
     /// parameters are bound by type macros.
     pub fn add_trait_bounds(&self, bound: &TraitBound, where_clause: &mut Option<WhereClause>) {
-        let mut seen = HashSet::new();
-        let mut pred = |ty: Type| if !seen.contains(&ty) {
-            seen.insert(ty.clone());
+        self.internal_add_bounds(bound, where_clause, BoundsToAdd::All)
+    }
 
-            // Ensure we have a where clause, because we need to use it. We
-            // can't use `get_or_insert_with`, because it isn't supported on all
-            // rustc versions we support (this is a Rust 1.20+ feature).
-            if where_clause.is_none() {
-                *where_clause = Some(WhereClause {
-                    where_token: Default::default(),
-                    predicates: punctuated::Punctuated::new(),
+    fn internal_add_bounds(
+        &self,
+        bound: &TraitBound,
+        clause: &mut Option<WhereClause>,
+        bounds: BoundsToAdd,
+    ) {
+        let mut generics = HashSet::new();
+        let bindings = self.variants.iter().flat_map(|v| v.bindings.iter());
+        match bounds {
+            BoundsToAdd::None => {}
+            BoundsToAdd::Fields => {
+                bindings.for_each(|b| Self::add_generic_binding(b, &mut generics));
+            }
+            BoundsToAdd::All => {
+                bindings.for_each(|b| {
+                    Self::add_generic_binding(b, &mut generics);
+                    Self::add_binding_generics(b, &mut generics);
                 });
             }
-            let clause = where_clause.as_mut().unwrap();
+        }
 
-            // Add a predicate.
-            clause.predicates.push(WherePredicate::Type(PredicateType {
-                lifetimes: None,
-                bounded_ty: ty,
-                colon_token: Default::default(),
-                bounds: Some(punctuated::Pair::End(TypeParamBound::Trait(bound.clone())))
-                    .into_iter()
-                    .collect(),
+        if !generics.is_empty() {
+            let new_predicates = generics
+                .into_iter()
+                .map(|ty| PredicateType {
+                    lifetimes: None,
+                    bounded_ty: ty,
+                    colon_token: Default::default(),
+                    bounds: Some(punctuated::Pair::End(TypeParamBound::Trait(bound.clone())))
+                        .into_iter()
+                        .collect(),
+                })
+                .map(WherePredicate::Type);
+            match *clause {
+                None => {
+                    *clause = Some(WhereClause {
+                        where_token: Default::default(),
+                        predicates: new_predicates.collect(),
+                    })
+                }
+                Some(ref mut clause) => clause.predicates.extend(new_predicates),
+            };
+        }
+    }
+
+    fn add_generic_binding(binding: &BindingInfo, types: &mut HashSet<Type>) {
+        if binding.seen_generics.iter().any(|&x| x) {
+            types.insert(binding.ast().ty.clone());
+        }
+    }
+
+    fn add_binding_generics(binding: &BindingInfo, types: &mut HashSet<Type>) {
+        for &param in binding.referenced_ty_params() {
+            types.insert(Type::Path(TypePath {
+                qself: None,
+                path: param.into(),
             }));
-        };
-
-        for variant in &self.variants {
-            for binding in &variant.bindings {
-                for &seen in &binding.seen_generics {
-                    if seen {
-                        pred(binding.ast().ty.clone());
-                        break;
-                    }
-                }
-
-                for param in binding.referenced_ty_params() {
-                    pred(Type::Path(TypePath {
-                        qself: None,
-                        path: (*param).clone().into(),
-                    }));
-                }
-            }
         }
     }
 
@@ -1609,12 +1638,12 @@ impl<'a> Structure<'a> {
     /// );
     /// # }
     /// ```
-    pub fn bound_impl<P: ToTokens,B: ToTokens>(&self, path: P, body: B) -> Tokens {
+    pub fn bound_impl<P: ToTokens, B: ToTokens>(&self, path: P, body: B) -> Tokens {
         self.impl_internal(
             path.into_tokens(),
             body.into_tokens(),
             quote!(),
-            true,
+            self.bounds,
         )
     }
 
@@ -1688,7 +1717,7 @@ impl<'a> Structure<'a> {
             path.into_tokens(),
             body.into_tokens(),
             quote!(unsafe),
-            true,
+            BoundsToAdd::All,
         )
     }
 
@@ -1752,7 +1781,7 @@ impl<'a> Structure<'a> {
             path.into_tokens(),
             body.into_tokens(),
             quote!(),
-            false,
+            BoundsToAdd::None,
         )
     }
 
@@ -1817,7 +1846,7 @@ impl<'a> Structure<'a> {
             path.into_tokens(),
             body.into_tokens(),
             quote!(unsafe),
-            false,
+            BoundsToAdd::None,
         )
     }
 
@@ -1826,7 +1855,7 @@ impl<'a> Structure<'a> {
         path: Tokens,
         body: Tokens,
         safety: Tokens,
-        add_bounds: bool,
+        bounds: BoundsToAdd,
     ) -> Tokens {
         let name = &self.ast.ident;
         let mut gen_clone = self.ast.generics.clone();
@@ -1838,9 +1867,7 @@ impl<'a> Structure<'a> {
             .expect("`path` argument must be a valid rust trait bound");
 
         let mut where_clause = where_clause.cloned();
-        if add_bounds {
-            self.add_trait_bounds(&bound, &mut where_clause);
-        }
+        self.internal_add_bounds(&bound, &mut where_clause, bounds);
 
         let dummy_const: Ident = sanitize_ident(&format!(
             "_DERIVE_{}_FOR_{}",
@@ -2037,7 +2064,7 @@ impl<'a> Structure<'a> {
     /// # }
     /// ```
     pub fn gen_impl(&self, cfg: Tokens) -> Tokens {
-        use syn::buffer::{TokenBuffer, Cursor};
+        use syn::buffer::{Cursor, TokenBuffer};
         use syn::synom::PResult;
         use proc_macro2::TokenStream;
 
@@ -2126,7 +2153,7 @@ impl<'a> Structure<'a> {
         // Add the generics from the original struct in, and then add any
         // additional trait bounds which we need on the type.
         merge_generics(&mut generics, &self.ast.generics);
-        self.add_trait_bounds(&bound, &mut generics.where_clause);
+        self.internal_add_bounds(&bound, &mut generics.where_clause, BoundsToAdd::All);
         let (impl_generics, _, where_clause) = generics.split_for_impl();
         let (_, ty_generics, _) = self.ast.generics.split_for_impl();
 
