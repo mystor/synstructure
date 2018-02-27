@@ -1950,18 +1950,18 @@ impl<'a> Structure<'a> {
     /// assert_eq!(
     ///     s.gen_impl(quote! {
     ///         extern crate krate;
-    ///         gen impl krate::Trait for @Self {
+    ///         gen impl krate::Trait<X> for @Self {
     ///             fn a() {}
     ///         }
     ///     }),
     ///     quote!{
     ///         #[allow(non_upper_case_globals)]
-    ///         const _DERIVE_krate_Trait_FOR_A: () = {
+    ///         const _DERIVE_krate_Trait_X_FOR_A: () = {
     ///             extern crate krate;
-    ///             impl<T, U> krate::Trait for A<T, U>
+    ///             impl<T, U> krate::Trait<X> for A<T, U>
     ///             where
-    ///                 Option<U>: krate::Trait,
-    ///                 U: krate::Trait
+    ///                 Option<U>: krate::Trait<X>,
+    ///                 U: krate::Trait<X>
     ///             {
     ///                 fn a() {}
     ///             }
@@ -1992,6 +1992,8 @@ impl<'a> Structure<'a> {
 
             // NOTE: After this point we assume they meant to write a gen impl,
             // so we panic if we run into an error.
+
+            let (_, c) = syn!(c, Generics).expect("Expected impl_generics; empty is fine");
 
             // @bound
             let (bound, c) = syn!(c, TraitBound)
