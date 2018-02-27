@@ -1932,6 +1932,7 @@ impl<'a> Structure<'a> {
     /// # Example Usage
     ///
     /// ```
+    /// # #![recursion_limit="128"]
     /// # #[macro_use] extern crate quote;
     /// # extern crate synstructure;
     /// # #[macro_use] extern crate syn;
@@ -1950,7 +1951,7 @@ impl<'a> Structure<'a> {
     /// assert_eq!(
     ///     s.gen_impl(quote! {
     ///         extern crate krate;
-    ///         gen impl krate::Trait<X> for @Self {
+    ///         gen impl<X: krate::OtherTrait> krate::Trait<X> for @Self {
     ///             fn a() {}
     ///         }
     ///     }),
@@ -1958,7 +1959,7 @@ impl<'a> Structure<'a> {
     ///         #[allow(non_upper_case_globals)]
     ///         const _DERIVE_krate_Trait_X_FOR_A: () = {
     ///             extern crate krate;
-    ///             impl<T, U> krate::Trait<X> for A<T, U>
+    ///             impl<T, U, X: krate::OtherTrait> krate::Trait<X> for A<T, U>
     ///             where
     ///                 Option<U>: krate::Trait<X>,
     ///                 U: krate::Trait<X>
@@ -1976,9 +1977,16 @@ impl<'a> Structure<'a> {
         use proc_macro2::TokenStream;
 
         /* Parsing Logic */
-        fn parse_gen_impl(c: Cursor)
-            -> PResult<(Option<token::Unsafe>, TraitBound, TokenStream)>
-        {
+        fn parse_gen_impl(
+            c: Cursor,
+        ) -> PResult<
+            (
+                Option<token::Unsafe>,
+                TraitBound,
+                TokenStream,
+                syn::Generics,
+            ),
+        > {
             // `gen`
             let (id, c) = syn!(c, Ident)?;
             if id.as_ref() != "gen" {
@@ -1993,7 +2001,9 @@ impl<'a> Structure<'a> {
             // NOTE: After this point we assume they meant to write a gen impl,
             // so we panic if we run into an error.
 
-            let (_, c) = syn!(c, Generics).expect("Expected impl_generics; empty is fine");
+            // optional `<>`
+            let (impl_generics, c) = syn!(c, Generics)
+                .expect("Expected an optional `<>` with generics after `gen impl`");
 
             // @bound
             let (bound, c) = syn!(c, TraitBound)
@@ -2008,13 +2018,13 @@ impl<'a> Structure<'a> {
             let ((_, body), c) = braces!(c, syn!(TokenStream))
                 .expect("Expected an impl body after `@Self`");
 
-            Ok(((unsafe_kw, bound, body), c))
+            Ok(((unsafe_kw, bound, body, impl_generics), c))
         }
 
         let buf = TokenBuffer::new2(cfg.into());
         let mut c = buf.begin();
         let mut before = vec![];
-        let ((unsafe_kw, bound, body), after) = loop {
+        let ((unsafe_kw, bound, body, impl_generics), after) = loop {
             if let Ok((gi, c2)) = parse_gen_impl(c) {
                 break (gi, c2.token_stream());
             } else if let Some((tt, c2)) = c.token_tree() {
@@ -2027,7 +2037,12 @@ impl<'a> Structure<'a> {
 
         /* Codegen Logic */
         let name = &self.ast.ident;
-        let (impl_generics, ty_generics, where_clause) = self.ast.generics.split_for_impl();
+        let mut gen_clone = self.ast.generics.clone();
+        gen_clone
+            .params
+            .extend(impl_generics.params.into_iter());
+        let (impl_generics, _, _) = gen_clone.split_for_impl();
+        let (_, ty_generics, where_clause) = self.ast.generics.split_for_impl();
 
         let mut where_clause = where_clause.cloned();
         self.add_trait_bounds(&bound, &mut where_clause);
@@ -2111,15 +2126,17 @@ pub fn unpretty_print<T: std::fmt::Display>(ts: T) -> String {
     let mut s = &raw_s[..];
     let mut indent = 0;
     while let Some(i) = s.find(&['(', '{', '[', ')', '}', ']', ';'][..]) {
-        match &s[i..i+1] {
+        match &s[i..i + 1] {
             "(" | "{" | "[" => indent += 1,
             ")" | "}" | "]" => indent -= 1,
             _ => {}
         }
-        res.push_str(&s[..i+1]);
+        res.push_str(&s[..i + 1]);
         res.push('\n');
-        for _ in 0..indent { res.push_str("    "); }
-        s = s[i+1..].trim_left_matches(' ');
+        for _ in 0..indent {
+            res.push_str("    ");
+        }
+        s = s[i + 1..].trim_left_matches(' ');
     }
     res.push_str(s);
     res
