@@ -916,6 +916,7 @@ pub struct Structure<'a> {
     variants: Vec<VariantInfo<'a>>,
     omitted_variants: bool,
     ast: &'a DeriveInput,
+    extra_impl: Vec<GenericParam>,
 }
 
 impl<'a> Structure<'a> {
@@ -972,6 +973,7 @@ impl<'a> Structure<'a> {
             variants: variants,
             omitted_variants: false,
             ast: ast,
+            extra_impl: vec![],
         }
     }
 
@@ -1407,6 +1409,54 @@ impl<'a> Structure<'a> {
         fetch_generics(&flags, &self.ast.generics)
     }
 
+    /// Adds an `impl<>` generic parameter.
+    /// This can be used when the trait to be derived needs some extra generic parameters.
+    ///
+    /// # Example
+    /// ```
+    /// # #![recursion_limit="128"]
+    /// # #[macro_use] extern crate quote;
+    /// # extern crate synstructure;
+    /// # #[macro_use] extern crate syn;
+    /// # use synstructure::*;
+    /// # fn main() {
+    /// let di: syn::DeriveInput = parse_quote! {
+    ///     enum A<T, U> {
+    ///         B(T),
+    ///         C(Option<U>),
+    ///     }
+    /// };
+    /// let mut s = Structure::new(&di);
+    /// let generic: syn::GenericParam = parse_quote!(X: krate::AnotherTrait);
+    ///
+    /// assert_eq!(
+    ///     s.add_impl_generic(generic)
+    ///         .bound_impl(quote!(krate::Trait<X>),
+    ///         quote!{
+    ///                 fn a() {}
+    ///         }
+    ///     ),
+    ///     quote!{
+    ///         #[allow(non_upper_case_globals)]
+    ///         const _DERIVE_krate_Trait_X_FOR_A: () = {
+    ///             extern crate krate;
+    ///             impl<T, U, X: krate::AnotherTrait> krate::Trait<X> for A<T, U>
+    ///                 where T : krate :: Trait < X >,
+    ///                       Option<U>: krate::Trait<X>,
+    ///                       U: krate::Trait<X>
+    ///             {
+    ///                 fn a() {}
+    ///             }
+    ///         };
+    ///     }
+    /// );
+    /// # }
+    /// ```
+    pub fn add_impl_generic(&mut self, param: GenericParam) -> &mut Self {
+        self.extra_impl.push(param);
+        self
+    }
+
     /// Add trait bounds for a trait with the given path for each type parmaeter
     /// referenced in the types of non-filtered fields.
     ///
@@ -1746,7 +1796,10 @@ impl<'a> Structure<'a> {
         add_bounds: bool,
     ) -> Tokens {
         let name = &self.ast.ident;
-        let (impl_generics, ty_generics, where_clause) = self.ast.generics.split_for_impl();
+        let mut gen_clone = self.ast.generics.clone();
+        gen_clone.params.extend(self.extra_impl.clone().into_iter());
+        let (impl_generics, _, _) = gen_clone.split_for_impl();
+        let (_, ty_generics, where_clause) = self.ast.generics.split_for_impl();
 
         let bound = syn::parse2::<TraitBound>(path.into())
             .expect("`path` argument must be a valid rust trait bound");
@@ -1879,6 +1932,7 @@ impl<'a> Structure<'a> {
     /// # Example Usage
     ///
     /// ```
+    /// # #![recursion_limit="128"]
     /// # #[macro_use] extern crate quote;
     /// # extern crate synstructure;
     /// # #[macro_use] extern crate syn;
@@ -1897,18 +1951,18 @@ impl<'a> Structure<'a> {
     /// assert_eq!(
     ///     s.gen_impl(quote! {
     ///         extern crate krate;
-    ///         gen impl krate::Trait for @Self {
+    ///         gen impl<X: krate::OtherTrait> krate::Trait<X> for @Self {
     ///             fn a() {}
     ///         }
     ///     }),
     ///     quote!{
     ///         #[allow(non_upper_case_globals)]
-    ///         const _DERIVE_krate_Trait_FOR_A: () = {
+    ///         const _DERIVE_krate_Trait_X_FOR_A: () = {
     ///             extern crate krate;
-    ///             impl<T, U> krate::Trait for A<T, U>
+    ///             impl<T, U, X: krate::OtherTrait> krate::Trait<X> for A<T, U>
     ///             where
-    ///                 Option<U>: krate::Trait,
-    ///                 U: krate::Trait
+    ///                 Option<U>: krate::Trait<X>,
+    ///                 U: krate::Trait<X>
     ///             {
     ///                 fn a() {}
     ///             }
@@ -1923,9 +1977,16 @@ impl<'a> Structure<'a> {
         use proc_macro2::TokenStream;
 
         /* Parsing Logic */
-        fn parse_gen_impl(c: Cursor)
-            -> PResult<(Option<token::Unsafe>, TraitBound, TokenStream)>
-        {
+        fn parse_gen_impl(
+            c: Cursor,
+        ) -> PResult<
+            (
+                Option<token::Unsafe>,
+                TraitBound,
+                TokenStream,
+                syn::Generics,
+            ),
+        > {
             // `gen`
             let (id, c) = syn!(c, Ident)?;
             if id.as_ref() != "gen" {
@@ -1940,6 +2001,10 @@ impl<'a> Structure<'a> {
             // NOTE: After this point we assume they meant to write a gen impl,
             // so we panic if we run into an error.
 
+            // optional `<>`
+            let (impl_generics, c) = syn!(c, Generics)
+                .expect("Expected an optional `<>` with generics after `gen impl`");
+
             // @bound
             let (bound, c) = syn!(c, TraitBound)
                 .expect("Expected a trait bound after `gen impl`");
@@ -1953,13 +2018,13 @@ impl<'a> Structure<'a> {
             let ((_, body), c) = braces!(c, syn!(TokenStream))
                 .expect("Expected an impl body after `@Self`");
 
-            Ok(((unsafe_kw, bound, body), c))
+            Ok(((unsafe_kw, bound, body, impl_generics), c))
         }
 
         let buf = TokenBuffer::new2(cfg.into());
         let mut c = buf.begin();
         let mut before = vec![];
-        let ((unsafe_kw, bound, body), after) = loop {
+        let ((unsafe_kw, bound, body, impl_generics), after) = loop {
             if let Ok((gi, c2)) = parse_gen_impl(c) {
                 break (gi, c2.token_stream());
             } else if let Some((tt, c2)) = c.token_tree() {
@@ -1972,7 +2037,12 @@ impl<'a> Structure<'a> {
 
         /* Codegen Logic */
         let name = &self.ast.ident;
-        let (impl_generics, ty_generics, where_clause) = self.ast.generics.split_for_impl();
+        let mut gen_clone = self.ast.generics.clone();
+        gen_clone
+            .params
+            .extend(impl_generics.params.into_iter());
+        let (impl_generics, _, _) = gen_clone.split_for_impl();
+        let (_, ty_generics, where_clause) = self.ast.generics.split_for_impl();
 
         let mut where_clause = where_clause.cloned();
         self.add_trait_bounds(&bound, &mut where_clause);
@@ -2056,15 +2126,17 @@ pub fn unpretty_print<T: std::fmt::Display>(ts: T) -> String {
     let mut s = &raw_s[..];
     let mut indent = 0;
     while let Some(i) = s.find(&['(', '{', '[', ')', '}', ']', ';'][..]) {
-        match &s[i..i+1] {
+        match &s[i..i + 1] {
             "(" | "{" | "[" => indent += 1,
             ")" | "}" | "]" => indent -= 1,
             _ => {}
         }
-        res.push_str(&s[..i+1]);
+        res.push_str(&s[..i + 1]);
         res.push('\n');
-        for _ in 0..indent { res.push_str("    "); }
-        s = s[i+1..].trim_left_matches(' ');
+        for _ in 0..indent {
+            res.push_str("    ");
+        }
+        s = s[i + 1..].trim_left_matches(' ');
     }
     res.push_str(s);
     res
