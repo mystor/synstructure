@@ -252,6 +252,59 @@ fn sanitize_ident(s: &str) -> Ident {
     Ident::new(&res, Span::def_site())
 }
 
+// XXX(nika): We don't have the ability to compare spans right now, so we can
+// only compare tokens by their identifier. This would be incorrect with the
+// "proc-macro2/nightly" feature enabled.
+//
+// Once a version of proc-macro2 with alexcrichton/proc-macro2#69 is released,
+// this can be fixed.
+fn identical_id(t1: &str, _: Span, t2: &str, _: Span) -> bool {
+    t1 == t2
+}
+
+// Internal method to merge two Generics objects together intelligently.
+fn merge_generics(into: &mut Generics, from: &Generics) {
+    // Try to add the param into `into`, and merge parmas with identical names.
+    'outer: for p in &from.params {
+        for op in &into.params {
+            match (op, p) {
+                (&GenericParam::Type(ref otp), &GenericParam::Type(ref tp)) => {
+                    if identical_id(
+                        otp.ident.as_ref(),
+                        otp.ident.span,
+                        tp.ident.as_ref(),
+                        tp.ident.span
+                    ) {
+                        panic!("Attempted to merge conflicting generic params: {} and {}", quote!{#op}, quote!{#p});
+                    }
+                }
+                (&GenericParam::Lifetime(ref olp), &GenericParam::Lifetime(ref lp)) => {
+                    if identical_id(
+                        &olp.lifetime.to_string(),
+                        olp.lifetime.span,
+                        &lp.lifetime.to_string(),
+                        lp.lifetime.span
+                    ) {
+                        panic!("Attempted to merge conflicting generic params: {} and {}", quote!{#op}, quote!{#p});
+                    }
+                }
+                // We don't support merging Const parameters, because that wouldn't make much sense.
+                _ => (),
+            }
+        }
+        into.params.push(p.clone());
+    }
+
+    // Add any where clauses from the input generics object.
+    if let Some(ref from_clause) = from.where_clause {
+        let mut to_clause = into.where_clause.get_or_insert(WhereClause {
+            where_token: Default::default(),
+            predicates: punctuated::Punctuated::new(),
+        });
+        to_clause.predicates.extend(from_clause.predicates.iter().cloned());
+    }
+}
+
 /// Information about a specific binding. This contains both an `Ident`
 /// reference to the given field, and the syn `&'a Field` descriptor for that
 /// field.
@@ -1919,6 +1972,9 @@ impl<'a> Structure<'a> {
     /// This method will automatically add trait bounds for any type parameters
     /// which are referenced within the types of non-ignored fields.
     ///
+    /// Additional type parameters may be added with the generics syntax after
+    /// the `impl` keyword.
+    ///
     /// ### Type Macro Caveat
     ///
     /// If the method contains any macros in type position, all parameters will
@@ -1927,7 +1983,9 @@ impl<'a> Structure<'a> {
     ///
     /// # Panics
     ///
-    /// This function will panic if the input `Tokens` is not well-formed.
+    /// This function will panic if the input `Tokens` is not well-formed, or
+    /// if additional type parameters added by `impl<..>` conflict with generic
+    /// type parameters on the original struct.
     ///
     /// # Example Usage
     ///
@@ -1951,7 +2009,33 @@ impl<'a> Structure<'a> {
     /// assert_eq!(
     ///     s.gen_impl(quote! {
     ///         extern crate krate;
-    ///         gen impl<X: krate::OtherTrait> krate::Trait<X> for @Self {
+    ///         gen impl krate::Trait for @Self {
+    ///             fn a() {}
+    ///         }
+    ///     }),
+    ///     quote!{
+    ///         #[allow(non_upper_case_globals)]
+    ///         const _DERIVE_krate_Trait_FOR_A: () = {
+    ///             extern crate krate;
+    ///             impl<T, U> krate::Trait for A<T, U>
+    ///             where
+    ///                 Option<U>: krate::Trait,
+    ///                 U: krate::Trait
+    ///             {
+    ///                 fn a() {}
+    ///             }
+    ///         };
+    ///     }
+    /// );
+    ///
+    /// // NOTE: You can also add extra generics after the impl
+    /// assert_eq!(
+    ///     s.gen_impl(quote! {
+    ///         extern crate krate;
+    ///         gen impl<X: krate::OtherTrait> krate::Trait<X> for @Self
+    ///         where
+    ///             X: Send + Sync,
+    ///         {
     ///             fn a() {}
     ///         }
     ///     }),
@@ -1959,8 +2043,9 @@ impl<'a> Structure<'a> {
     ///         #[allow(non_upper_case_globals)]
     ///         const _DERIVE_krate_Trait_X_FOR_A: () = {
     ///             extern crate krate;
-    ///             impl<T, U, X: krate::OtherTrait> krate::Trait<X> for A<T, U>
+    ///             impl<X: krate::OtherTrait, T, U> krate::Trait<X> for A<T, U>
     ///             where
+    ///                 X: Send + Sync,
     ///                 Option<U>: krate::Trait<X>,
     ///                 U: krate::Trait<X>
     ///             {
@@ -2002,7 +2087,7 @@ impl<'a> Structure<'a> {
             // so we panic if we run into an error.
 
             // optional `<>`
-            let (impl_generics, c) = syn!(c, Generics)
+            let (mut generics, c) = syn!(c, Generics)
                 .expect("Expected an optional `<>` with generics after `gen impl`");
 
             // @bound
@@ -2015,16 +2100,24 @@ impl<'a> Structure<'a> {
             let (_, c) = do_parse!(c, syn!(Token![@]) >> keyword!(Self) >> (()))
                 .expect("Expected `@Self` after `for`");
 
+            // optional `where ...`
+            // XXX: We have to do this awkward if let because option!() doesn't
+            // provide enough type information to call expect().
+            let c = if let Ok((where_clause, c)) = syn!(c, WhereClause) {
+                generics.where_clause = Some(where_clause);
+                c
+            } else { c };
+
             let ((_, body), c) = braces!(c, syn!(TokenStream))
                 .expect("Expected an impl body after `@Self`");
 
-            Ok(((unsafe_kw, bound, body, impl_generics), c))
+            Ok(((unsafe_kw, bound, body, generics), c))
         }
 
         let buf = TokenBuffer::new2(cfg.into());
         let mut c = buf.begin();
         let mut before = vec![];
-        let ((unsafe_kw, bound, body, impl_generics), after) = loop {
+        let ((unsafe_kw, bound, body, mut generics), after) = loop {
             if let Ok((gi, c2)) = parse_gen_impl(c) {
                 break (gi, c2.token_stream());
             } else if let Some((tt, c2)) = c.token_tree() {
@@ -2037,15 +2130,13 @@ impl<'a> Structure<'a> {
 
         /* Codegen Logic */
         let name = &self.ast.ident;
-        let mut gen_clone = self.ast.generics.clone();
-        gen_clone
-            .params
-            .extend(impl_generics.params.into_iter());
-        let (impl_generics, _, _) = gen_clone.split_for_impl();
-        let (_, ty_generics, where_clause) = self.ast.generics.split_for_impl();
 
-        let mut where_clause = where_clause.cloned();
-        self.add_trait_bounds(&bound, &mut where_clause);
+        // Add the generics from the original struct in, and then add any
+        // additional trait bounds which we need on the type.
+        merge_generics(&mut generics, &self.ast.generics);
+        self.add_trait_bounds(&bound, &mut generics.where_clause);
+        let (impl_generics, _, where_clause) = generics.split_for_impl();
+        let (_, ty_generics, _) = self.ast.generics.split_for_impl();
 
         let dummy_const: Ident = sanitize_ident(&format!(
             "_DERIVE_{}_FOR_{}",
