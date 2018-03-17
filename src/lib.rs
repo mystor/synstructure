@@ -157,6 +157,7 @@
 //! For more example usage, consider investigating the `abomonation_derive` crate,
 //! which makes use of this crate, and is fairly simple.
 
+extern crate indexmap;
 extern crate proc_macro;
 extern crate proc_macro2;
 #[macro_use]
@@ -164,8 +165,6 @@ extern crate quote;
 #[macro_use]
 extern crate syn;
 extern crate unicode_xid;
-
-use std::collections::HashSet;
 
 use syn::{punctuated, token, Attribute, Data, DeriveInput, Expr, Field, Fields, FieldsNamed,
           FieldsUnnamed, GenericParam, Generics, Ident, PredicateType, TraitBound, Type,
@@ -178,6 +177,7 @@ use syn::visit::{self, Visit};
 pub use quote::*;
 
 use unicode_xid::UnicodeXID;
+use indexmap::IndexSet;
 
 use proc_macro2::Span;
 
@@ -1496,6 +1496,16 @@ impl<'a> Structure<'a> {
         self
     }
 
+    /// Specify which bounds will be added when you call for
+    /// [`bound_impl`](struct.Structure.html#method.bound_impl),
+    /// [`gen_impl`](struct.Structure.html#method.gen_impl), or
+    /// [`add_trait_bounds`](struct.Structure.html#method.add_trait_bounds).
+    ///
+    /// `BoundsToAdd::None`: No generic fields nor generic parameters will be bounded to the Trait
+    ///
+    /// `BoundsToAdd::Fields`: Generic fields but NOT generic parameters will be bounded to the Trait
+    ///
+    /// `BoundsToAdd::All`: Generic fields AND generic parameters will be bounded to the Trait
     pub fn bounds(&mut self, bounds: BoundsToAdd) -> &mut Self {
         self.bounds = bounds;
         self
@@ -1510,67 +1520,7 @@ impl<'a> Structure<'a> {
     /// be considered bound. This is because we cannot determine which type
     /// parameters are bound by type macros.
     pub fn add_trait_bounds(&self, bound: &TraitBound, where_clause: &mut Option<WhereClause>) {
-        self.internal_add_bounds(bound, where_clause, BoundsToAdd::All)
-    }
-
-    fn internal_add_bounds(
-        &self,
-        bound: &TraitBound,
-        clause: &mut Option<WhereClause>,
-        bounds: BoundsToAdd,
-    ) {
-        let mut generics = HashSet::new();
-        let bindings = self.variants.iter().flat_map(|v| v.bindings.iter());
-        match bounds {
-            BoundsToAdd::None => {}
-            BoundsToAdd::Fields => {
-                bindings.for_each(|b| Self::add_generic_binding(b, &mut generics));
-            }
-            BoundsToAdd::All => {
-                bindings.for_each(|b| {
-                    Self::add_generic_binding(b, &mut generics);
-                    Self::add_binding_generics(b, &mut generics);
-                });
-            }
-        }
-
-        if !generics.is_empty() {
-            let new_predicates = generics
-                .into_iter()
-                .map(|ty| PredicateType {
-                    lifetimes: None,
-                    bounded_ty: ty,
-                    colon_token: Default::default(),
-                    bounds: Some(punctuated::Pair::End(TypeParamBound::Trait(bound.clone())))
-                        .into_iter()
-                        .collect(),
-                })
-                .map(WherePredicate::Type);
-            match *clause {
-                None => {
-                    *clause = Some(WhereClause {
-                        where_token: Default::default(),
-                        predicates: new_predicates.collect(),
-                    })
-                }
-                Some(ref mut clause) => clause.predicates.extend(new_predicates),
-            };
-        }
-    }
-
-    fn add_generic_binding(binding: &BindingInfo, types: &mut HashSet<Type>) {
-        if binding.seen_generics.iter().any(|&x| x) {
-            types.insert(binding.ast().ty.clone());
-        }
-    }
-
-    fn add_binding_generics(binding: &BindingInfo, types: &mut HashSet<Type>) {
-        for &param in binding.referenced_ty_params() {
-            types.insert(Type::Path(TypePath {
-                qself: None,
-                path: param.into(),
-            }));
-        }
+        self.internal_add_bounds(bound, where_clause, self.bounds)
     }
 
     /// > NOTE: This methods' features are superceded by `Structure::gen_impl`.
@@ -1621,6 +1571,62 @@ impl<'a> Structure<'a> {
     ///
     /// assert_eq!(
     ///     s.bound_impl(quote!(krate::Trait), quote!{
+    ///         fn a() {}
+    ///     }),
+    ///     quote!{
+    ///         #[allow(non_upper_case_globals)]
+    ///         const _DERIVE_krate_Trait_FOR_A: () = {
+    ///             extern crate krate;
+    ///             impl<T, U> krate::Trait for A<T, U>
+    ///                 where Option<U>: krate::Trait,
+    ///                       U: krate::Trait
+    ///             {
+    ///                 fn a() {}
+    ///             }
+    ///         };
+    ///     }
+    /// );
+    ///
+    /// // NOTE: You can also specify which bounds from the fields will be added
+    /// assert_eq!(
+    ///     // Neither generic fields nor generic parameters will be bound by krate::Trait
+    ///     s.bounds(BoundsToAdd::None).bound_impl(quote!(krate::Trait), quote!{
+    ///         fn a() {}
+    ///     }),
+    ///     quote!{
+    ///         #[allow(non_upper_case_globals)]
+    ///         const _DERIVE_krate_Trait_FOR_A: () = {
+    ///             extern crate krate;
+    ///             impl<T, U> krate::Trait for A<T, U>
+    ///             {
+    ///                 fn a() {}
+    ///             }
+    ///         };
+    ///     }
+    /// );
+    ///
+    /// assert_eq!(
+    ///     // Generic fields but NOT generic parameters will be bound by krate::Trait
+    ///     s.bounds(BoundsToAdd::Fields).bound_impl(quote!(krate::Trait), quote!{
+    ///         fn a() {}
+    ///     }),
+    ///     quote!{
+    ///         #[allow(non_upper_case_globals)]
+    ///         const _DERIVE_krate_Trait_FOR_A: () = {
+    ///             extern crate krate;
+    ///             impl<T, U> krate::Trait for A<T, U>
+    ///                 where Option<U>: krate::Trait
+    ///             {
+    ///                 fn a() {}
+    ///             }
+    ///         };
+    ///     }
+    /// );
+    ///
+    /// assert_eq!(
+    ///     // Generic fields AND generic parameters will be bound by krate::Trait
+    ///     // This is the default behavior without calling to `bounds`
+    ///     s.bounds(BoundsToAdd::All).bound_impl(quote!(krate::Trait), quote!{
     ///         fn a() {}
     ///     }),
     ///     quote!{
@@ -1717,7 +1723,7 @@ impl<'a> Structure<'a> {
             path.into_tokens(),
             body.into_tokens(),
             quote!(unsafe),
-            BoundsToAdd::All,
+            self.bounds,
         )
     }
 
@@ -2061,10 +2067,91 @@ impl<'a> Structure<'a> {
     ///         };
     ///     }
     /// );
+    ///
+    /// // NOTE: You can also specify which bounds from the fields will be added
+    /// assert_eq!(
+    ///     // Fields and generics will NOT be bounded by krate::Trait<X>
+    ///     s.bounds(BoundsToAdd::None).gen_impl(quote! {
+    ///         extern crate krate;
+    ///         gen impl<X: krate::OtherTrait> krate::Trait<X> for @Self
+    ///         where
+    ///             X: Send + Sync,
+    ///         {
+    ///             fn a() {}
+    ///         }
+    ///     }),
+    ///     quote!{
+    ///         #[allow(non_upper_case_globals)]
+    ///         const _DERIVE_krate_Trait_X_FOR_A: () = {
+    ///             extern crate krate;
+    ///             impl<X: krate::OtherTrait, T, U> krate::Trait<X> for A<T, U>
+    ///             where
+    ///                 X: Send + Sync,
+    ///             {
+    ///                 fn a() {}
+    ///             }
+    ///         };
+    ///     }
+    /// );
+    ///
+    /// assert_eq!(
+    ///     // Every field will be bounded by krate::Trait<X>
+    ///     // Generics will NOT be bounded by krate::Trait<X>
+    ///     s.bounds(BoundsToAdd::Fields).gen_impl(quote! {
+    ///         extern crate krate;
+    ///         gen impl<X: krate::OtherTrait> krate::Trait<X> for @Self
+    ///         where
+    ///             X: Send + Sync,
+    ///         {
+    ///             fn a() {}
+    ///         }
+    ///     }),
+    ///     quote!{
+    ///         #[allow(non_upper_case_globals)]
+    ///         const _DERIVE_krate_Trait_X_FOR_A: () = {
+    ///             extern crate krate;
+    ///             impl<X: krate::OtherTrait, T, U> krate::Trait<X> for A<T, U>
+    ///             where
+    ///                 X: Send + Sync,
+    ///                 Option<U>: krate::Trait<X>
+    ///             {
+    ///                 fn a() {}
+    ///             }
+    ///         };
+    ///     }
+    /// );
+    ///
+    /// assert_eq!(
+    ///     // Every field and generic will be bounded by krate::Trait<X>
+    ///     // This is the default behavior without calling to `bounds`
+    ///     s.bounds(BoundsToAdd::All).gen_impl(quote! {
+    ///         extern crate krate;
+    ///         gen impl<X: krate::OtherTrait> krate::Trait<X> for @Self
+    ///         where
+    ///             X: Send + Sync,
+    ///         {
+    ///             fn a() {}
+    ///         }
+    ///     }),
+    ///     quote!{
+    ///         #[allow(non_upper_case_globals)]
+    ///         const _DERIVE_krate_Trait_X_FOR_A: () = {
+    ///             extern crate krate;
+    ///             impl<X: krate::OtherTrait, T, U> krate::Trait<X> for A<T, U>
+    ///             where
+    ///                 X: Send + Sync,
+    ///                 Option<U>: krate::Trait<X>,
+    ///                 U: krate::Trait<X>
+    ///             {
+    ///                 fn a() {}
+    ///             }
+    ///         };
+    ///     }
+    /// );
     /// # }
     /// ```
     pub fn gen_impl(&self, cfg: Tokens) -> Tokens {
-        use syn::buffer::{Cursor, TokenBuffer};
+        use syn::buffer::{TokenBuffer, Cursor};
         use syn::synom::PResult;
         use proc_macro2::TokenStream;
 
@@ -2153,7 +2240,7 @@ impl<'a> Structure<'a> {
         // Add the generics from the original struct in, and then add any
         // additional trait bounds which we need on the type.
         merge_generics(&mut generics, &self.ast.generics);
-        self.internal_add_bounds(&bound, &mut generics.where_clause, BoundsToAdd::All);
+        self.internal_add_bounds(&bound, &mut generics.where_clause, self.bounds);
         let (impl_generics, _, where_clause) = generics.split_for_impl();
         let (_, ty_generics, _) = self.ast.generics.split_for_impl();
 
@@ -2172,6 +2259,67 @@ impl<'a> Structure<'a> {
                 }
                 #after
             };
+        }
+    }
+
+    fn internal_add_bounds(
+        &self,
+        bound: &TraitBound,
+        clause: &mut Option<WhereClause>,
+        bounds: BoundsToAdd,
+    ) {
+        // preserve insertion order for reproducibility and ease of testing
+        let mut generics = IndexSet::new();
+        let bindings = self.variants.iter().flat_map(|v| v.bindings.iter());
+        match bounds {
+            BoundsToAdd::None => {}
+            BoundsToAdd::Fields => {
+                bindings.for_each(|b| Self::add_generic_binding(b, &mut generics));
+            }
+            BoundsToAdd::All => {
+                bindings.for_each(|b| {
+                    Self::add_generic_binding(b, &mut generics);
+                    Self::add_binding_generics(b, &mut generics);
+                });
+            }
+        }
+
+        if !generics.is_empty() {
+            let new_predicates = generics
+                .into_iter()
+                .map(|ty| PredicateType {
+                    lifetimes: None,
+                    bounded_ty: ty,
+                    colon_token: Default::default(),
+                    bounds: Some(punctuated::Pair::End(TypeParamBound::Trait(bound.clone())))
+                        .into_iter()
+                        .collect(),
+                })
+                .map(WherePredicate::Type);
+            match *clause {
+                None => {
+                    *clause = Some(WhereClause {
+                        where_token: Default::default(),
+                        predicates: new_predicates.collect(),
+                    })
+                }
+                Some(ref mut clause) => clause.predicates.extend(new_predicates),
+            };
+        }
+    }
+
+    fn add_generic_binding(binding: &BindingInfo, types: &mut IndexSet<Type>) {
+        if binding.seen_generics.iter().any(|&x| x) {
+            types.insert(binding.ast().ty.clone());
+        }
+    }
+
+    fn add_binding_generics(binding: &BindingInfo, types: &mut IndexSet<Type>) {
+        for &param in binding.referenced_ty_params() {
+            types.insert(Type::Path(TypePath {
+                qself: None,
+                path: param.into(),
+            }));
         }
     }
 }
