@@ -249,7 +249,7 @@ fn sanitize_ident(s: &str) -> Ident {
         if res.ends_with('_') && c == '_' { continue }
         res.push(c);
     }
-    Ident::new(&res, Span::def_site())
+    Ident::from(res)
 }
 
 // XXX(nika): We don't have the ability to compare spans right now, so we can
@@ -271,9 +271,9 @@ fn merge_generics(into: &mut Generics, from: &Generics) {
                 (&GenericParam::Type(ref otp), &GenericParam::Type(ref tp)) => {
                     if identical_id(
                         otp.ident.as_ref(),
-                        otp.ident.span,
+                        otp.ident.span(),
                         tp.ident.as_ref(),
-                        tp.ident.span
+                        tp.ident.span()
                     ) {
                         panic!("Attempted to merge conflicting generic params: {} and {}", quote!{#op}, quote!{#p});
                     }
@@ -281,9 +281,9 @@ fn merge_generics(into: &mut Generics, from: &Generics) {
                 (&GenericParam::Lifetime(ref olp), &GenericParam::Lifetime(ref lp)) => {
                     if identical_id(
                         &olp.lifetime.to_string(),
-                        olp.lifetime.span,
+                        olp.lifetime.span(),
                         &lp.lifetime.to_string(),
-                        lp.lifetime.span
+                        lp.lifetime.span()
                     ) {
                         panic!("Attempted to merge conflicting generic params: {} and {}", quote!{#op}, quote!{#p});
                     }
