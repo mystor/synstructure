@@ -249,17 +249,7 @@ fn sanitize_ident(s: &str) -> Ident {
         if res.ends_with('_') && c == '_' { continue }
         res.push(c);
     }
-    Ident::new(&res, Span::def_site())
-}
-
-// XXX(nika): We don't have the ability to compare spans right now, so we can
-// only compare tokens by their identifier. This would be incorrect with the
-// "proc-macro2/nightly" feature enabled.
-//
-// Once a version of proc-macro2 with alexcrichton/proc-macro2#69 is released,
-// this can be fixed.
-fn identical_id(t1: &str, _: Span, t2: &str, _: Span) -> bool {
-    t1 == t2
+    Ident::from(res)
 }
 
 // Internal method to merge two Generics objects together intelligently.
@@ -269,22 +259,12 @@ fn merge_generics(into: &mut Generics, from: &Generics) {
         for op in &into.params {
             match (op, p) {
                 (&GenericParam::Type(ref otp), &GenericParam::Type(ref tp)) => {
-                    if identical_id(
-                        otp.ident.as_ref(),
-                        otp.ident.span,
-                        tp.ident.as_ref(),
-                        tp.ident.span
-                    ) {
+                    if otp == tp {
                         panic!("Attempted to merge conflicting generic params: {} and {}", quote!{#op}, quote!{#p});
                     }
                 }
                 (&GenericParam::Lifetime(ref olp), &GenericParam::Lifetime(ref lp)) => {
-                    if identical_id(
-                        &olp.lifetime.to_string(),
-                        olp.lifetime.span,
-                        &lp.lifetime.to_string(),
-                        lp.lifetime.span
-                    ) {
+                    if olp == lp {
                         panic!("Attempted to merge conflicting generic params: {} and {}", quote!{#op}, quote!{#p});
                     }
                 }
