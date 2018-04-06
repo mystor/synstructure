@@ -226,7 +226,7 @@ fn generics_fuse(res: &mut Vec<bool>, new: &[bool]) {
     }
 }
 
-// Internal method for extracting the set of generics which have been matched
+// Internal method for extracting the set of generics which have been matched.
 fn fetch_generics<'a>(set: &[bool], generics: &'a Generics) -> Vec<&'a Ident> {
     let mut tys = vec![];
     for (&seen, param) in set.iter().zip(generics.params.iter()) {
@@ -259,12 +259,14 @@ fn merge_generics(into: &mut Generics, from: &Generics) {
         for op in &into.params {
             match (op, p) {
                 (&GenericParam::Type(ref otp), &GenericParam::Type(ref tp)) => {
-                    if otp == tp {
+                    // NOTE: This is only OK because syn ignores the span for equality purposes.
+                    if otp.ident == tp.ident {
                         panic!("Attempted to merge conflicting generic params: {} and {}", quote!{#op}, quote!{#p});
                     }
                 }
                 (&GenericParam::Lifetime(ref olp), &GenericParam::Lifetime(ref lp)) => {
-                    if olp == lp {
+                    // NOTE: This is only OK because syn ignores the span for equality purposes.
+                    if olp.lifetime == lp.lifetime {
                         panic!("Attempted to merge conflicting generic params: {} and {}", quote!{#op}, quote!{#p});
                     }
                 }

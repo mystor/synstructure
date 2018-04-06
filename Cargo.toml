@@ -17,7 +17,7 @@ simple-derive = []
 
 [dependencies]
 syn = { version = "0.13", features = ["visit", "extra-traits"] }
-proc-macro2 = "0.3.1"
+proc-macro2 = "0.3"
 quote = "0.5"
 unicode-xid = "0.1"
 
