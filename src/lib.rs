@@ -279,17 +279,9 @@ fn merge_generics(into: &mut Generics, from: &Generics) {
 
     // Add any where clauses from the input generics object.
     if let Some(ref from_clause) = from.where_clause {
-        // Ensure we have a where clause, because we need to use it. We
-        // can't use `get_or_insert`, because it isn't supported on all
-        // rustc versions we support (this is a Rust 1.20+ feature).
-        if into.where_clause.is_none() {
-            into.where_clause = Some(WhereClause {
-                where_token: Default::default(),
-                predicates: punctuated::Punctuated::new(),
-            });
-        }
-        let to_clause = into.where_clause.as_mut().unwrap();
-        to_clause.predicates.extend(from_clause.predicates.iter().cloned());
+        into.make_where_clause()
+            .predicates
+            .extend(from_clause.predicates.iter().cloned());
     }
 }
 
