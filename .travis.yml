@@ -3,8 +3,7 @@ sudo: false
 
 matrix:
   include:
-    # 1.15.0 doesn't work right now :-/ - bugs in macro expansion
-    # - rust: 1.15.0
+    - rust: 1.15.0
     - rust: stable
     - rust: beta
     - rust: nightly

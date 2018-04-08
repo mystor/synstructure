@@ -279,10 +279,16 @@ fn merge_generics(into: &mut Generics, from: &Generics) {
 
     // Add any where clauses from the input generics object.
     if let Some(ref from_clause) = from.where_clause {
-        let mut to_clause = into.where_clause.get_or_insert(WhereClause {
-            where_token: Default::default(),
-            predicates: punctuated::Punctuated::new(),
-        });
+        // Ensure we have a where clause, because we need to use it. We
+        // can't use `get_or_insert`, because it isn't supported on all
+        // rustc versions we support (this is a Rust 1.20+ feature).
+        if into.where_clause.is_none() {
+            into.where_clause = Some(WhereClause {
+                where_token: Default::default(),
+                predicates: punctuated::Punctuated::new(),
+            });
+        }
+        let to_clause = into.where_clause.as_mut().unwrap();
         to_clause.predicates.extend(from_clause.predicates.iter().cloned());
     }
 }
@@ -1507,7 +1513,7 @@ impl<'a> Structure<'a> {
 
             // Ensure we have a where clause, because we need to use it. We
             // can't use `get_or_insert_with`, because it isn't supported on all
-            // rustc versions we support.
+            // rustc versions we support (this is a Rust 1.20+ feature).
             if where_clause.is_none() {
                 *where_clause = Some(WhereClause {
                     where_token: Default::default(),
@@ -2099,15 +2105,27 @@ impl<'a> Structure<'a> {
         let buf = TokenBuffer::new2(cfg.into());
         let mut c = buf.begin();
         let mut before = vec![];
-        let ((unsafe_kw, bound, body, mut generics), after) = loop {
-            if let Ok((gi, c2)) = parse_gen_impl(c) {
-                break (gi, c2.token_stream());
-            } else if let Some((tt, c2)) = c.token_tree() {
-                c = c2;
-                before.push(tt);
-            } else {
-                panic!("Expected a gen impl block");
+
+        // Use uninitialized variables here to avoid using the "break with value"
+        // language feature, which requires Rust 1.19+.
+        let ((unsafe_kw, bound, body, mut generics), after) = {
+            let gen_impl;
+            let cursor;
+
+            loop {
+                if let Ok((gi, c2)) = parse_gen_impl(c) {
+                    gen_impl = gi;
+                    cursor = c2;
+                    break;
+                } else if let Some((tt, c2)) = c.token_tree() {
+                    c = c2;
+                    before.push(tt);
+                } else {
+                    panic!("Expected a gen impl block");
+                }
             }
+
+            (gen_impl, cursor.token_stream())
         };
 
         /* Codegen Logic */
