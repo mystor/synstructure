@@ -253,12 +253,12 @@ macro_rules! simple_derive {
     (
         $iname:ident impl $path:path { $($rest:tt)* }
     ) => {
-        simple_derive!(@I [$iname, $path] { $($rest)* } [] []);
+        simple_derive!(__I [$iname, $path] { $($rest)* } [] []);
     };
 
     // Adding a filter block
     (
-        @I $opt:tt {
+        __I $opt:tt {
             filter($s:ident) {
                 $($body:tt)*
             }
@@ -266,7 +266,7 @@ macro_rules! simple_derive {
         } [$($done:tt)*] [$($filter:tt)*]
     ) => {
         simple_derive!(
-            @I $opt { $($rest)* } [$($done)*] [
+            __I $opt { $($rest)* } [$($done)*] [
                 $($filter)*
                 [
                     st_name = $s,
@@ -280,7 +280,7 @@ macro_rules! simple_derive {
 
     // &self bound method
     (
-        @I $opt:tt {
+        __I $opt:tt {
             fn $fn_name:ident (&self as $s:ident $($params:tt)*) $(-> $t:ty)* {
                 $($body:tt)*
             }
@@ -288,7 +288,7 @@ macro_rules! simple_derive {
         } [$($done:tt)*] [$($filter:tt)*]
     ) => {
         simple_derive!(
-            @I $opt { $($rest)* } [
+            __I $opt { $($rest)* } [
                 $($done)*
                 [
                     st_name = $s,
@@ -307,7 +307,7 @@ macro_rules! simple_derive {
 
     // &mut self bound method
     (
-        @I $opt:tt {
+        __I $opt:tt {
             fn $fn_name:ident (&mut self as $s:ident $($params:tt)*) $(-> $t:ty)* {
                 $($body:tt)*
             }
@@ -315,7 +315,7 @@ macro_rules! simple_derive {
         } [$($done:tt)*] [$($filter:tt)*]
     ) => {
         simple_derive!(
-            @I $opt { $($rest)* } [
+            __I $opt { $($rest)* } [
                 $($done)*
                 [
                     st_name = $s,
@@ -334,7 +334,7 @@ macro_rules! simple_derive {
 
     // self bound method
     (
-        @I $opt:tt {
+        __I $opt:tt {
             fn $fn_name:ident (self as $s:ident $($params:tt)*) $(-> $t:ty)* {
                 $($body:tt)*
             }
@@ -342,7 +342,7 @@ macro_rules! simple_derive {
         } [$($done:tt)*] [$($filter:tt)*]
     ) => {
         simple_derive!(
-            @I $opt { $($rest)* } [
+            __I $opt { $($rest)* } [
                 $($done)*
                 [
                     st_name = $s,
@@ -363,7 +363,7 @@ macro_rules! simple_derive {
 
     // codegen after data collection
     (
-        @I [$iname:ident, $path:path] {} [$(
+        __I [$iname:ident, $path:path] {} [$(
             [
                 st_name = $st_name:ident,
                 bind_style = $bind_style:ident,
