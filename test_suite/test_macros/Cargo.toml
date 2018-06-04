@@ -9,8 +9,8 @@ proc-macro = true
 
 [dependencies]
 synstructure = { path = "../../" }
-syn = "0.13"
-quote = "0.5"
-proc-macro2 = "0.3"
+syn = "0.14"
+quote = "0.6"
+proc-macro2 = "0.4"
 
 synstructure_test_traits = { path = "../../test_traits" }
