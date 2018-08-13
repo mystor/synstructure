@@ -541,7 +541,7 @@ impl<'a> VariantInfo<'a> {
     /// # }
     /// ```
     pub fn pat(&self) -> TokenStream {
-        let mut t = TokenStream::empty();
+        let mut t = TokenStream::new();
         if let Some(prefix) = self.prefix {
             prefix.to_tokens(&mut t);
             quote!(::).to_tokens(&mut t);
@@ -621,7 +621,7 @@ impl<'a> VariantInfo<'a> {
         F: FnMut(&Field, usize) -> T,
         T: ToTokens,
     {
-        let mut t = TokenStream::empty();
+        let mut t = TokenStream::new();
         if let Some(prefix) = self.prefix {
             quote!(#prefix ::).to_tokens(&mut t);
         }
@@ -690,7 +690,7 @@ impl<'a> VariantInfo<'a> {
         R: ToTokens,
     {
         let pat = self.pat();
-        let mut body = TokenStream::empty();
+        let mut body = TokenStream::new();
         for binding in &self.bindings {
             token::Brace::default().surround(&mut body, |body| {
                 f(binding).to_tokens(body);
@@ -1078,7 +1078,7 @@ impl<'a> Structure<'a> {
         F: FnMut(&BindingInfo) -> R,
         R: ToTokens,
     {
-        let mut t = TokenStream::empty();
+        let mut t = TokenStream::new();
         for variant in &self.variants {
             variant.each(&mut f).to_tokens(&mut t);
         }
@@ -1132,7 +1132,7 @@ impl<'a> Structure<'a> {
         I: ToTokens,
         R: ToTokens,
     {
-        let mut t = TokenStream::empty();
+        let mut t = TokenStream::new();
         for variant in &self.variants {
             variant.fold(&init, &mut f).to_tokens(&mut t);
         }
@@ -1186,7 +1186,7 @@ impl<'a> Structure<'a> {
         F: FnMut(&VariantInfo) -> R,
         R: ToTokens,
     {
-        let mut t = TokenStream::empty();
+        let mut t = TokenStream::new();
         for variant in &self.variants {
             let pat = variant.pat();
             let body = f(variant);
