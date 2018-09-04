@@ -181,7 +181,7 @@ use syn::visit::{self, Visit};
 // implementations.
 #[doc(hidden)]
 pub use quote::*;
-use proc_macro2::TokenStream;
+use proc_macro2::{TokenStream, TokenTree};
 
 use unicode_xid::UnicodeXID;
 
@@ -541,7 +541,7 @@ impl<'a> VariantInfo<'a> {
     /// # }
     /// ```
     pub fn pat(&self) -> TokenStream {
-        let mut t = TokenStream::empty();
+        let mut t = TokenStream::new();
         if let Some(prefix) = self.prefix {
             prefix.to_tokens(&mut t);
             quote!(::).to_tokens(&mut t);
@@ -621,7 +621,7 @@ impl<'a> VariantInfo<'a> {
         F: FnMut(&Field, usize) -> T,
         T: ToTokens,
     {
-        let mut t = TokenStream::empty();
+        let mut t = TokenStream::new();
         if let Some(prefix) = self.prefix {
             quote!(#prefix ::).to_tokens(&mut t);
         }
@@ -690,7 +690,7 @@ impl<'a> VariantInfo<'a> {
         R: ToTokens,
     {
         let pat = self.pat();
-        let mut body = TokenStream::empty();
+        let mut body = TokenStream::new();
         for binding in &self.bindings {
             token::Brace::default().surround(&mut body, |body| {
                 f(binding).to_tokens(body);
@@ -1078,7 +1078,7 @@ impl<'a> Structure<'a> {
         F: FnMut(&BindingInfo) -> R,
         R: ToTokens,
     {
-        let mut t = TokenStream::empty();
+        let mut t = TokenStream::new();
         for variant in &self.variants {
             variant.each(&mut f).to_tokens(&mut t);
         }
@@ -1132,7 +1132,7 @@ impl<'a> Structure<'a> {
         I: ToTokens,
         R: ToTokens,
     {
-        let mut t = TokenStream::empty();
+        let mut t = TokenStream::new();
         for variant in &self.variants {
             variant.fold(&init, &mut f).to_tokens(&mut t);
         }
@@ -1186,7 +1186,7 @@ impl<'a> Structure<'a> {
         F: FnMut(&VariantInfo) -> R,
         R: ToTokens,
     {
-        let mut t = TokenStream::empty();
+        let mut t = TokenStream::new();
         for variant in &self.variants {
             let pat = variant.pat();
             let body = f(variant);
@@ -2047,115 +2047,81 @@ impl<'a> Structure<'a> {
     /// # }
     /// ```
     pub fn gen_impl(&self, cfg: TokenStream) -> TokenStream {
-        use syn::buffer::{TokenBuffer, Cursor};
-        use syn::synom::PResult;
-        use proc_macro2::TokenStream;
+        use syn::parse::{Parser, ParseStream, Result};
 
-        /* Parsing Logic */
-        fn parse_gen_impl(
-            c: Cursor,
-        ) -> PResult<
-            (
-                Option<token::Unsafe>,
-                TraitBound,
-                TokenStream,
-                syn::Generics,
-            ),
-        > {
-            // `gen`
-            let (id, c) = syn!(c, Ident)?;
-            if id != "gen" {
-                let ((), _) = reject!(c,)?;
-                unreachable!()
+        // Syn requires parsers to be methods conforming to a strict signature
+        let do_parse = |input: ParseStream| -> Result<TokenStream> {
+            // Helper lambda to parse the prefix of a gen block.
+            let parse_prefix = |input: ParseStream| -> Result<_> {
+                if input.parse::<Ident>()? != "gen" {
+                    return Err(input.error(""));
+                }
+                let safety = input.parse::<Option<Token![unsafe]>>()?;
+                let _ = input.parse::<Token![impl]>()?;
+                Ok(safety)
+            };
+
+            let mut before = vec![];
+            loop {
+                if let Ok(_) = parse_prefix(&input.fork()) {
+                    break;
+                }
+                before.push(input.parse::<TokenTree>()?);
             }
 
-            // `impl` or unsafe impl`
-            let (unsafe_kw, c) = option!(c, keyword!(unsafe))?;
-            let (_, c) = syn!(c, token::Impl)?;
-
-            // NOTE: After this point we assume they meant to write a gen impl,
-            // so we panic if we run into an error.
+            // Parse the prefix "for real"
+            let safety = parse_prefix(input)?;
 
             // optional `<>`
-            let (mut generics, c) = syn!(c, Generics)
-                .expect("Expected an optional `<>` with generics after `gen impl`");
+            let mut generics = input.parse::<Generics>()?;
 
             // @bound
-            let (bound, c) = syn!(c, TraitBound)
-                .expect("Expected a trait bound after `gen impl`");
+            let bound = input.parse::<TraitBound>()?;
 
             // `for @Self`
-            let (_, c) = keyword!(c, for)
-                .expect("Expected `for` after trait bound");
-            let (_, c) = do_parse!(c, syn!(Token![@]) >> keyword!(Self) >> (()))
-                .expect("Expected `@Self` after `for`");
+            let _ = input.parse::<Token![for]>()?;
+            let _ = input.parse::<Token![@]>()?;
+            let _ = input.parse::<Token![Self]>()?;
 
             // optional `where ...`
-            // XXX: We have to do this awkward if let because option!() doesn't
-            // provide enough type information to call expect().
-            let c = if let Ok((where_clause, c)) = syn!(c, WhereClause) {
-                generics.where_clause = Some(where_clause);
-                c
-            } else { c };
+            generics.where_clause = input.parse()?;
 
-            let ((_, body), c) = braces!(c, syn!(TokenStream))
-                .expect("Expected an impl body after `@Self`");
+            // Body of the impl
+            let body;
+            braced!(body in input);
+            let body = body.parse::<TokenStream>()?;
 
-            Ok(((unsafe_kw, bound, body, generics), c))
-        }
+            // Tokens following impl
+            let after = input.parse::<TokenStream>()?;
 
-        let buf = TokenBuffer::new2(cfg.into());
-        let mut c = buf.begin();
-        let mut before = vec![];
+            /* Codegen Logic */
+            let name = &self.ast.ident;
 
-        // Use uninitialized variables here to avoid using the "break with value"
-        // language feature, which requires Rust 1.19+.
-        let ((unsafe_kw, bound, body, mut generics), after) = {
-            let gen_impl;
-            let cursor;
+            // Add the generics from the original struct in, and then add any
+            // additional trait bounds which we need on the type.
+            merge_generics(&mut generics, &self.ast.generics);
+            self.add_trait_bounds(&bound, &mut generics.where_clause);
+            let (impl_generics, _, where_clause) = generics.split_for_impl();
+            let (_, ty_generics, _) = self.ast.generics.split_for_impl();
 
-            loop {
-                if let Ok((gi, c2)) = parse_gen_impl(c) {
-                    gen_impl = gi;
-                    cursor = c2;
-                    break;
-                } else if let Some((tt, c2)) = c.token_tree() {
-                    c = c2;
-                    before.push(tt);
-                } else {
-                    panic!("Expected a gen impl block");
-                }
-            }
+            let dummy_const: Ident = sanitize_ident(&format!(
+                "_DERIVE_{}_FOR_{}",
+                (&bound).into_token_stream(),
+                name.into_token_stream(),
+            ));
 
-            (gen_impl, cursor.token_stream())
+            Ok(quote! {
+                #[allow(non_upper_case_globals)]
+                const #dummy_const: () = {
+                    #(#before)*
+                    #safety impl #impl_generics #bound for #name #ty_generics #where_clause {
+                        #body
+                    }
+                    #after
+                };
+            })
         };
-
-        /* Codegen Logic */
-        let name = &self.ast.ident;
-
-        // Add the generics from the original struct in, and then add any
-        // additional trait bounds which we need on the type.
-        merge_generics(&mut generics, &self.ast.generics);
-        self.add_trait_bounds(&bound, &mut generics.where_clause);
-        let (impl_generics, _, where_clause) = generics.split_for_impl();
-        let (_, ty_generics, _) = self.ast.generics.split_for_impl();
-
-        let dummy_const: Ident = sanitize_ident(&format!(
-            "_DERIVE_{}_FOR_{}",
-            (&bound).into_token_stream(),
-            name.into_token_stream(),
-        ));
-
-        quote! {
-            #[allow(non_upper_case_globals)]
-            const #dummy_const: () = {
-                #(#before)*
-                #unsafe_kw impl #impl_generics #bound for #name #ty_generics #where_clause {
-                    #body
-                }
-                #after
-            };
-        }
+        Parser::parse2(do_parse, cfg).expect("Failed to parse gen_impl")
     }
 }
 
