@@ -9,7 +9,7 @@ proc-macro = true
 
 [dependencies]
 synstructure = { path = "../../" }
-syn = "0.14"
+syn-next = { version = "0.15.0-rc3" }
 quote = "0.6"
 proc-macro2 = "0.4"
 
