@@ -1533,7 +1533,12 @@ impl<'a> Structure<'a> {
     /// If the method contains any macros in type position, all parameters will
     /// be considered bound. This is because we cannot determine which type
     /// parameters are bound by type macros.
-    pub fn add_trait_bounds(&self, bound: &TraitBound, where_clause: &mut Option<WhereClause>, mode: AddBounds) {
+    pub fn add_trait_bounds(
+        &self,
+        bound: &TraitBound,
+        where_clause: &mut Option<WhereClause>,
+        mode: AddBounds,
+    ) {
         let mut seen = HashSet::new();
         let mut pred = |ty: Type| if !seen.contains(&ty) {
             seen.insert(ty.clone());
