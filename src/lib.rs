@@ -193,7 +193,7 @@ use proc_macro2::Span;
 #[doc(hidden)]
 pub mod macros;
 
-/// Changes how bounds are addeda
+/// Changes how bounds are added
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub enum AddBounds {
     /// Add for fields and generics
