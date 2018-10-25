@@ -204,6 +204,8 @@ pub enum AddBounds {
     Generics,
     /// None
     None,
+    #[doc(hidden)]
+    __Nonexhaustive,
 }
 
 /// The type of binding to use when generating a pattern.
