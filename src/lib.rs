@@ -1273,6 +1273,44 @@ impl<'a> Structure<'a> {
     ///
     /// The default behaviour is to generate both field and generic bounds from
     /// type parameters.
+    ///
+    /// # Example
+    /// ```
+    /// # #[macro_use] extern crate quote;
+    /// # extern crate synstructure;
+    /// # #[macro_use] extern crate syn;
+    /// # use synstructure::*;
+    /// # fn main() {
+    /// let di: syn::DeriveInput = parse_quote! {
+    ///     enum A<T, U> {
+    ///         B(T),
+    ///         C(Option<U>),
+    ///     }
+    /// };
+    /// let mut s = Structure::new(&di);
+    ///
+    /// // Limit bounds to only generics.
+    /// s.add_bounds(AddBounds::Generics);
+    ///
+    /// assert_eq!(
+    ///     s.bound_impl(quote!(krate::Trait), quote!{
+    ///         fn a() {}
+    ///     }).to_string(),
+    ///     quote!{
+    ///         #[allow(non_upper_case_globals)]
+    ///         const _DERIVE_krate_Trait_FOR_A: () = {
+    ///             extern crate krate;
+    ///             impl<T, U> krate::Trait for A<T, U>
+    ///                 where T: krate::Trait,
+    ///                       U: krate::Trait
+    ///             {
+    ///                 fn a() {}
+    ///             }
+    ///         };
+    ///     }.to_string()
+    /// );
+    /// # }
+    /// ```
     pub fn add_bounds(&mut self, mode: AddBounds) -> &mut Self {
         self.add_bounds = mode;
         self
