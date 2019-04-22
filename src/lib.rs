@@ -1298,6 +1298,7 @@ impl<'a> Structure<'a> {
     ///     }).to_string(),
     ///     quote!{
     ///         #[allow(non_upper_case_globals)]
+    ///         #[doc(hidden)]
     ///         const _DERIVE_krate_Trait_FOR_A: () = {
     ///             extern crate krate;
     ///             impl<T, U> krate::Trait for A<T, U>
@@ -1546,6 +1547,7 @@ impl<'a> Structure<'a> {
     ///     ).to_string(),
     ///     quote!{
     ///         #[allow(non_upper_case_globals)]
+    ///         #[doc(hidden)]
     ///         const _DERIVE_krate_Trait_X_FOR_A: () = {
     ///             extern crate krate;
     ///             impl<T, U, X: krate::AnotherTrait> krate::Trait<X> for A<T, U>
@@ -1686,6 +1688,7 @@ impl<'a> Structure<'a> {
     ///     }).to_string(),
     ///     quote!{
     ///         #[allow(non_upper_case_globals)]
+    ///         #[doc(hidden)]
     ///         const _DERIVE_krate_Trait_FOR_A: () = {
     ///             extern crate krate;
     ///             impl<T, U> krate::Trait for A<T, U>
@@ -1760,6 +1763,7 @@ impl<'a> Structure<'a> {
     ///     }).to_string(),
     ///     quote!{
     ///         #[allow(non_upper_case_globals)]
+    ///         #[doc(hidden)]
     ///         const _DERIVE_krate_Trait_FOR_A: () = {
     ///             extern crate krate;
     ///             unsafe impl<T, U> krate::Trait for A<T, U>
@@ -1827,6 +1831,7 @@ impl<'a> Structure<'a> {
     ///     }).to_string(),
     ///     quote!{
     ///         #[allow(non_upper_case_globals)]
+    ///         #[doc(hidden)]
     ///         const _DERIVE_krate_Trait_FOR_A: () = {
     ///             extern crate krate;
     ///             impl<T, U> krate::Trait for A<T, U> {
@@ -1891,6 +1896,7 @@ impl<'a> Structure<'a> {
     ///     }).to_string(),
     ///     quote!{
     ///         #[allow(non_upper_case_globals)]
+    ///         #[doc(hidden)]
     ///         const _DERIVE_krate_Trait_FOR_A: () = {
     ///             extern crate krate;
     ///             unsafe impl<T, U> krate::Trait for A<T, U> {
@@ -1951,6 +1957,7 @@ impl<'a> Structure<'a> {
 
         quote! {
             #[allow(non_upper_case_globals)]
+            #[doc(hidden)]
             const #dummy_const: () = {
                 #extern_crate
                 #safety impl #impl_generics #bound for #name #ty_generics #where_clause {
