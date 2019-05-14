@@ -8,16 +8,21 @@ extern crate proc_macro2;
 decl_derive!([Interest] => interest_derive);
 
 fn interest_derive(structure: synstructure::Structure) -> proc_macro2::TokenStream {
-    let match_body = structure.fold(quote!(false), |acc, bi| quote!{
-        #acc || synstructure_test_traits::Interest::interesting(#bi)
-    });
-    structure.bound_impl(quote!(synstructure_test_traits::Interest), quote! {
-        fn interesting(&self) -> bool {
-            match *self {
-                #match_body
-            }
+    let match_body = structure.fold(quote!(false), |acc, bi| {
+        quote! {
+            #acc || synstructure_test_traits::Interest::interesting(#bi)
         }
-    })
+    });
+    structure.bound_impl(
+        quote!(synstructure_test_traits::Interest),
+        quote! {
+            fn interesting(&self) -> bool {
+                match *self {
+                    #match_body
+                }
+            }
+        },
+    )
 }
 
 #[test]

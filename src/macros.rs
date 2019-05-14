@@ -3,9 +3,9 @@
 //! declare and test custom derive implementations.
 
 // Re-exports used by the decl_derive! and test_derive!
-pub use syn::{parse_str, parse, DeriveInput};
-pub use proc_macro::TokenStream as TokenStream;
+pub use proc_macro::TokenStream;
 pub use proc_macro2::TokenStream as TokenStream2;
+pub use syn::{parse, parse_str, DeriveInput};
 
 /// The `decl_derive!` macro declares a custom derive wrapper. It will parse the
 /// incoming `TokenStream` into a `synstructure::Structure` object, and pass it
@@ -116,12 +116,12 @@ macro_rules! decl_attribute {
         pub fn $attribute(
             attr: $crate::macros::TokenStream,
             i: $crate::macros::TokenStream,
-        ) -> $crate::macros::TokenStream
-        {
-            let parsed = $crate::macros::parse::<$crate::macros::DeriveInput>(i)
-                .expect(concat!("Failed to parse input to `#[",
-                                stringify!($attribute),
-                                "]`"));
+        ) -> $crate::macros::TokenStream {
+            let parsed = $crate::macros::parse::<$crate::macros::DeriveInput>(i).expect(concat!(
+                "Failed to parse input to `#[",
+                stringify!($attribute),
+                "]`"
+            ));
             $inner(attr.into(), $crate::Structure::new(&parsed)).into()
         }
     };

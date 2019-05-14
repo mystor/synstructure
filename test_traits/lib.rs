@@ -15,5 +15,7 @@ pub trait Interest {
     fn interesting(&self) -> bool;
 }
 impl Interest for i32 {
-    fn interesting(&self) -> bool { *self > 0 }
+    fn interesting(&self) -> bool {
+        *self > 0
+    }
 }

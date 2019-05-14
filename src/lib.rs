@@ -169,19 +169,18 @@ extern crate unicode_xid;
 
 use std::collections::HashSet;
 
-use syn::{
-    Generics, Ident, Attribute, Field, Fields, Expr, DeriveInput,
-    TraitBound, WhereClause, GenericParam, Data, WherePredicate,
-    TypeParamBound, Type, TypeMacro, FieldsUnnamed, FieldsNamed,
-    PredicateType, TypePath, token, punctuated,
-};
 use syn::visit::{self, Visit};
+use syn::{
+    punctuated, token, Attribute, Data, DeriveInput, Expr, Field, Fields, FieldsNamed,
+    FieldsUnnamed, GenericParam, Generics, Ident, PredicateType, TraitBound, Type, TypeMacro,
+    TypeParamBound, TypePath, WhereClause, WherePredicate,
+};
 
 // re-export the quote! macro so we can depend on it being around in our macro's
 // implementations.
+use proc_macro2::{TokenStream, TokenTree};
 #[doc(hidden)]
 pub use quote::*;
-use proc_macro2::{TokenStream, TokenTree};
 
 use unicode_xid::UnicodeXID;
 
@@ -262,9 +261,13 @@ fn fetch_generics<'a>(set: &[bool], generics: &'a Generics) -> Vec<&'a Ident> {
 fn sanitize_ident(s: &str) -> Ident {
     let mut res = String::with_capacity(s.len());
     for mut c in s.chars() {
-        if ! UnicodeXID::is_xid_continue(c) { c = '_' }
+        if !UnicodeXID::is_xid_continue(c) {
+            c = '_'
+        }
         // Deduplicate consecutive _ characters.
-        if res.ends_with('_') && c == '_' { continue }
+        if res.ends_with('_') && c == '_' {
+            continue;
+        }
         res.push(c);
     }
     Ident::new(&res, Span::call_site())
@@ -279,13 +282,21 @@ fn merge_generics(into: &mut Generics, from: &Generics) {
                 (&GenericParam::Type(ref otp), &GenericParam::Type(ref tp)) => {
                     // NOTE: This is only OK because syn ignores the span for equality purposes.
                     if otp.ident == tp.ident {
-                        panic!("Attempted to merge conflicting generic params: {} and {}", quote!{#op}, quote!{#p});
+                        panic!(
+                            "Attempted to merge conflicting generic params: {} and {}",
+                            quote! {#op},
+                            quote! {#p}
+                        );
                     }
                 }
                 (&GenericParam::Lifetime(ref olp), &GenericParam::Lifetime(ref lp)) => {
                     // NOTE: This is only OK because syn ignores the span for equality purposes.
                     if olp.lifetime == lp.lifetime {
-                        panic!("Attempted to merge conflicting generic params: {} and {}", quote!{#op}, quote!{#p});
+                        panic!(
+                            "Attempted to merge conflicting generic params: {} and {}",
+                            quote! {#op},
+                            quote! {#p}
+                        );
                     }
                 }
                 // We don't support merging Const parameters, because that wouldn't make much sense.
@@ -478,18 +489,21 @@ impl<'a> VariantInfo<'a> {
     fn new(ast: VariantAst<'a>, prefix: Option<&'a Ident>, generics: &'a Generics) -> Self {
         let bindings = match *ast.fields {
             Fields::Unit => vec![],
-            Fields::Unnamed(FieldsUnnamed { unnamed: ref fields, .. }) |
-            Fields::Named(FieldsNamed { named: ref fields, .. }) => {
-                fields.into_iter()
+            Fields::Unnamed(FieldsUnnamed {
+                unnamed: ref fields,
+                ..
+            })
+            | Fields::Named(FieldsNamed {
+                named: ref fields, ..
+            }) => {
+                fields
+                    .into_iter()
                     .enumerate()
                     .map(|(i, field)| {
                         BindingInfo {
                             // XXX: This has to be call_site to avoid privacy
                             // when deriving on private fields.
-                            binding: Ident::new(
-                                &format!("__binding_{}", i),
-                                Span::call_site(),
-                            ),
+                            binding: Ident::new(&format!("__binding_{}", i), Span::call_site()),
                             style: BindStyle::Ref,
                             field: field,
                             generics: generics,
@@ -566,30 +580,26 @@ impl<'a> VariantInfo<'a> {
             Fields::Unit => {
                 assert!(self.bindings.len() == 0);
             }
-            Fields::Unnamed(..) => {
-                token::Paren(Span::call_site()).surround(&mut t, |t| {
-                    for binding in &self.bindings {
-                        binding.pat().to_tokens(t);
-                        quote!(,).to_tokens(t);
-                    }
-                    if self.omitted_fields {
-                        quote!(..).to_tokens(t);
-                    }
-                })
-            }
-            Fields::Named(..) => {
-                token::Brace(Span::call_site()).surround(&mut t, |t| {
-                    for binding in &self.bindings {
-                        binding.field.ident.to_tokens(t);
-                        quote!(:).to_tokens(t);
-                        binding.pat().to_tokens(t);
-                        quote!(,).to_tokens(t);
-                    }
-                    if self.omitted_fields {
-                        quote!(..).to_tokens(t);
-                    }
-                })
-            }
+            Fields::Unnamed(..) => token::Paren(Span::call_site()).surround(&mut t, |t| {
+                for binding in &self.bindings {
+                    binding.pat().to_tokens(t);
+                    quote!(,).to_tokens(t);
+                }
+                if self.omitted_fields {
+                    quote!(..).to_tokens(t);
+                }
+            }),
+            Fields::Named(..) => token::Brace(Span::call_site()).surround(&mut t, |t| {
+                for binding in &self.bindings {
+                    binding.field.ident.to_tokens(t);
+                    quote!(:).to_tokens(t);
+                    binding.pat().to_tokens(t);
+                    quote!(,).to_tokens(t);
+                }
+                if self.omitted_fields {
+                    quote!(..).to_tokens(t);
+                }
+            }),
         }
         t
     }
@@ -979,22 +989,21 @@ impl<'a> Structure<'a> {
     /// `DeriveInput`.
     pub fn new(ast: &'a DeriveInput) -> Self {
         let variants = match ast.data {
-            Data::Enum(ref data) => {
-                (&data.variants).into_iter()
-                    .map(|v| {
-                        VariantInfo::new(
-                            VariantAst {
-                                attrs: &v.attrs,
-                                ident: &v.ident,
-                                fields: &v.fields,
-                                discriminant: &v.discriminant
-                            },
-                            Some(&ast.ident),
-                            &ast.generics,
-                        )
-                    })
-                    .collect::<Vec<_>>()
-            }
+            Data::Enum(ref data) => (&data.variants)
+                .into_iter()
+                .map(|v| {
+                    VariantInfo::new(
+                        VariantAst {
+                            attrs: &v.attrs,
+                            ident: &v.ident,
+                            fields: &v.fields,
+                            discriminant: &v.discriminant,
+                        },
+                        Some(&ast.ident),
+                        &ast.generics,
+                    )
+                })
+                .collect::<Vec<_>>(),
             Data::Struct(ref data) => {
                 // SAFETY NOTE: Normally putting an `Expr` in static storage
                 // wouldn't be safe, because it could contain `Term` objects
@@ -1005,22 +1014,22 @@ impl<'a> Structure<'a> {
                 unsafe impl Sync for UnsafeMakeSync {}
                 static NONE_DISCRIMINANT: UnsafeMakeSync = UnsafeMakeSync(None);
 
-                vec![
-                    VariantInfo::new(
-                        VariantAst {
-                            attrs: &ast.attrs,
-                            ident: &ast.ident,
-                            fields: &data.fields,
-                            discriminant: &NONE_DISCRIMINANT.0,
-                        },
-                        None,
-                        &ast.generics,
-                    ),
-                ]
+                vec![VariantInfo::new(
+                    VariantAst {
+                        attrs: &ast.attrs,
+                        ident: &ast.ident,
+                        fields: &data.fields,
+                        discriminant: &NONE_DISCRIMINANT.0,
+                    },
+                    None,
+                    &ast.generics,
+                )]
             }
             Data::Union(_) => {
-                panic!("synstructure does not handle untagged unions \
-                    (https://github.com/mystor/synstructure/issues/6)");
+                panic!(
+                    "synstructure does not handle untagged unions \
+                     (https://github.com/mystor/synstructure/issues/6)"
+                );
             }
         };
 
@@ -1582,29 +1591,31 @@ impl<'a> Structure<'a> {
         mode: AddBounds,
     ) {
         let mut seen = HashSet::new();
-        let mut pred = |ty: Type| if !seen.contains(&ty) {
-            seen.insert(ty.clone());
+        let mut pred = |ty: Type| {
+            if !seen.contains(&ty) {
+                seen.insert(ty.clone());
 
-            // Ensure we have a where clause, because we need to use it. We
-            // can't use `get_or_insert_with`, because it isn't supported on all
-            // rustc versions we support (this is a Rust 1.20+ feature).
-            if where_clause.is_none() {
-                *where_clause = Some(WhereClause {
-                    where_token: Default::default(),
-                    predicates: punctuated::Punctuated::new(),
-                });
+                // Ensure we have a where clause, because we need to use it. We
+                // can't use `get_or_insert_with`, because it isn't supported on all
+                // rustc versions we support (this is a Rust 1.20+ feature).
+                if where_clause.is_none() {
+                    *where_clause = Some(WhereClause {
+                        where_token: Default::default(),
+                        predicates: punctuated::Punctuated::new(),
+                    });
+                }
+                let clause = where_clause.as_mut().unwrap();
+
+                // Add a predicate.
+                clause.predicates.push(WherePredicate::Type(PredicateType {
+                    lifetimes: None,
+                    bounded_ty: ty,
+                    colon_token: Default::default(),
+                    bounds: Some(punctuated::Pair::End(TypeParamBound::Trait(bound.clone())))
+                        .into_iter()
+                        .collect(),
+                }));
             }
-            let clause = where_clause.as_mut().unwrap();
-
-            // Add a predicate.
-            clause.predicates.push(WherePredicate::Type(PredicateType {
-                lifetimes: None,
-                bounded_ty: ty,
-                colon_token: Default::default(),
-                bounds: Some(punctuated::Pair::End(TypeParamBound::Trait(bound.clone())))
-                    .into_iter()
-                    .collect(),
-            }));
         };
 
         for variant in &self.variants {
@@ -1702,7 +1713,7 @@ impl<'a> Structure<'a> {
     /// );
     /// # }
     /// ```
-    pub fn bound_impl<P: ToTokens,B: ToTokens>(&self, path: P, body: B) -> TokenStream {
+    pub fn bound_impl<P: ToTokens, B: ToTokens>(&self, path: P, body: B) -> TokenStream {
         self.impl_internal(
             path.into_token_stream(),
             body.into_token_stream(),
@@ -2135,7 +2146,7 @@ impl<'a> Structure<'a> {
     ///
     /// Use `add_bounds` to change which bounds are generated.
     pub fn gen_impl(&self, cfg: TokenStream) -> TokenStream {
-        use syn::parse::{Parser, ParseStream, Result};
+        use syn::parse::{ParseStream, Parser, Result};
 
         // Syn requires parsers to be methods conforming to a strict signature
         let do_parse = |input: ParseStream| -> Result<TokenStream> {
