@@ -226,6 +226,7 @@ got:
 ///         }
 ///         expands to {
 ///             #[allow(non_upper_case_globals)]
+///             #[doc(hidden)]
 ///             const _DERIVE_synstructure_test_traits_Interest_FOR_A: () = {
 ///                 extern crate synstructure_test_traits;
 ///                 impl<T> synstructure_test_traits::Interest for A<T>
