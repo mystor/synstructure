@@ -111,7 +111,6 @@ macro_rules! decl_derive {
 /// ```
 #[macro_export]
 macro_rules! decl_attribute {
-    // XXX: Switch to using this variant everywhere?
     ([$attribute:ident] => $inner:path) => {
         #[proc_macro_attribute]
         pub fn $attribute(
