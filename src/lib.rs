@@ -2339,3 +2339,53 @@ pub fn unpretty_print<T: std::fmt::Display>(ts: T) -> String {
 fn trim_start_matches(s: &str, c: char) -> &str {
     s.trim_left_matches(c)
 }
+
+/// Helper trait describing values which may be returned by macro implementation
+/// methods used by this crate's macros.
+pub trait MacroResult {
+    /// Convert this result into a `Result` for further processing / validation.
+    fn into_result(self) -> Result<TokenStream>;
+
+    /// Convert this result into a `proc_macro::TokenStream`, ready to return
+    /// from a native `proc_macro` implementation.
+    ///
+    /// If `into_result()` would return an `Err`, this method should instead
+    /// generate a `compile_error!` invocation to nicely report the error.
+    fn into_stream(self) -> proc_macro::TokenStream;
+}
+
+impl MacroResult for proc_macro::TokenStream {
+    fn into_result(self) -> Result<TokenStream> {
+        Ok(self.into())
+    }
+
+    fn into_stream(self) -> proc_macro::TokenStream {
+        self
+    }
+}
+
+impl MacroResult for TokenStream {
+    fn into_result(self) -> Result<TokenStream> {
+        Ok(self)
+    }
+
+    fn into_stream(self) -> proc_macro::TokenStream {
+        self.into()
+    }
+}
+
+impl<T: MacroResult> MacroResult for Result<T> {
+    fn into_result(self) -> Result<TokenStream> {
+        match self {
+            Ok(v) => v.into_result(),
+            Err(err) => Err(err),
+        }
+    }
+
+    fn into_stream(self) -> proc_macro::TokenStream {
+        match self {
+            Ok(v) => v.into_stream(),
+            Err(err) => err.to_compile_error().into(),
+        }
+    }
+}
