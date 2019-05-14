@@ -61,13 +61,16 @@ macro_rules! decl_derive {
         #[allow(non_snake_case)]
         pub fn $derives(
             i: $crate::macros::TokenStream
-        ) -> $crate::macros::TokenStream
-        {
-            let parsed = $crate::macros::parse::<$crate::macros::DeriveInput>(i)
-                .expect(concat!("Failed to parse input to `#[derive(",
-                                stringify!($derives),
-                                ")]`"));
-            $inner($crate::Structure::new(&parsed)).into()
+        ) -> $crate::macros::TokenStream {
+            match $crate::macros::parse::<$crate::macros::DeriveInput>(i) {
+                Ok(p) => {
+                    match $crate::Structure::try_new(&p) {
+                        Ok(s) => $inner(s).into(),
+                        Err(e) => e.to_compile_error().into(),
+                    }
+                }
+                Err(e) => e.to_compile_error().into(),
+            }
         }
     };
 }
@@ -117,12 +120,13 @@ macro_rules! decl_attribute {
             attr: $crate::macros::TokenStream,
             i: $crate::macros::TokenStream,
         ) -> $crate::macros::TokenStream {
-            let parsed = $crate::macros::parse::<$crate::macros::DeriveInput>(i).expect(concat!(
-                "Failed to parse input to `#[",
-                stringify!($attribute),
-                "]`"
-            ));
-            $inner(attr.into(), $crate::Structure::new(&parsed)).into()
+            match $crate::macros::parse::<$crate::macros::DeriveInput>(i) {
+                Ok(p) => match $crate::Structure::try_new(&p) {
+                    Ok(s) => $inner(attr.into(), s).into(),
+                    Err(e) => e.to_compile_error().into(),
+                },
+                Err(e) => e.to_compile_error().into(),
+            }
         }
     };
 }
@@ -176,9 +180,11 @@ macro_rules! test_derive {
         {
             let i = stringify!( $($i)* );
             let parsed = $crate::macros::parse_str::<$crate::macros::DeriveInput>(i)
-                .expect(concat!("Failed to parse input to `#[derive(",
-                                stringify!($name),
-                                ")]`"));
+                .expect(concat!(
+                    "Failed to parse input to `#[derive(",
+                    stringify!($name),
+                    ")]`",
+                ));
 
             let res = $name($crate::Structure::new(&parsed));
             let expected = stringify!( $($o)* )
@@ -201,7 +207,6 @@ got:
                     $crate::unpretty_print(&res),
                 );
             }
-            // assert_eq!(res, expected_toks)
         }
     };
 }

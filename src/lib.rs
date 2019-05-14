@@ -161,6 +161,7 @@
 
 extern crate proc_macro;
 extern crate proc_macro2;
+#[allow(unused)]
 #[macro_use]
 extern crate quote;
 #[macro_use]
@@ -171,9 +172,9 @@ use std::collections::HashSet;
 
 use syn::visit::{self, Visit};
 use syn::{
-    punctuated, token, Attribute, Data, DeriveInput, Expr, Field, Fields, FieldsNamed,
-    FieldsUnnamed, GenericParam, Generics, Ident, PredicateType, TraitBound, Type, TypeMacro,
-    TypeParamBound, TypePath, WhereClause, WherePredicate,
+    punctuated, token, Attribute, Data, DeriveInput, Error, Expr, Field, Fields, FieldsNamed,
+    FieldsUnnamed, GenericParam, Generics, Ident, PredicateType, Result, TraitBound, Type,
+    TypeMacro, TypeParamBound, TypePath, WhereClause, WherePredicate,
 };
 
 // re-export the quote! macro so we can depend on it being around in our macro's
@@ -274,7 +275,7 @@ fn sanitize_ident(s: &str) -> Ident {
 }
 
 // Internal method to merge two Generics objects together intelligently.
-fn merge_generics(into: &mut Generics, from: &Generics) {
+fn merge_generics(into: &mut Generics, from: &Generics) -> Result<()> {
     // Try to add the param into `into`, and merge parmas with identical names.
     'outer: for p in &from.params {
         for op in &into.params {
@@ -282,21 +283,27 @@ fn merge_generics(into: &mut Generics, from: &Generics) {
                 (&GenericParam::Type(ref otp), &GenericParam::Type(ref tp)) => {
                     // NOTE: This is only OK because syn ignores the span for equality purposes.
                     if otp.ident == tp.ident {
-                        panic!(
-                            "Attempted to merge conflicting generic params: {} and {}",
-                            quote! {#op},
-                            quote! {#p}
-                        );
+                        return Err(Error::new_spanned(
+                            p,
+                            format!(
+                                "Attempted to merge conflicting generic parameters: {} and {}",
+                                quote!(#op),
+                                quote!(#p)
+                            ),
+                        ));
                     }
                 }
                 (&GenericParam::Lifetime(ref olp), &GenericParam::Lifetime(ref lp)) => {
                     // NOTE: This is only OK because syn ignores the span for equality purposes.
                     if olp.lifetime == lp.lifetime {
-                        panic!(
-                            "Attempted to merge conflicting generic params: {} and {}",
-                            quote! {#op},
-                            quote! {#p}
-                        );
+                        return Err(Error::new_spanned(
+                            p,
+                            format!(
+                                "Attempted to merge conflicting generic parameters: {} and {}",
+                                quote!(#op),
+                                quote!(#p)
+                            ),
+                        ));
                     }
                 }
                 // We don't support merging Const parameters, because that wouldn't make much sense.
@@ -312,6 +319,8 @@ fn merge_generics(into: &mut Generics, from: &Generics) {
             .predicates
             .extend(from_clause.predicates.iter().cloned());
     }
+
+    Ok(())
 }
 
 /// Information about a specific binding. This contains both an `Ident`
@@ -987,7 +996,21 @@ pub struct Structure<'a> {
 impl<'a> Structure<'a> {
     /// Create a new `Structure` with the variants and fields from the passed-in
     /// `DeriveInput`.
+    ///
+    /// # Panics
+    ///
+    /// This method will panic if the provided AST node represents an untagged
+    /// union.
     pub fn new(ast: &'a DeriveInput) -> Self {
+        Self::try_new(ast).expect("Unable to create synstructure::Structure")
+    }
+
+    /// Create a new `Structure` with the variants and fields from the passed-in
+    /// `DeriveInput`.
+    ///
+    /// Unlike `Structure::new`, this method does not panic if the provided AST
+    /// node represents an untagged union.
+    pub fn try_new(ast: &'a DeriveInput) -> Result<Self> {
         let variants = match ast.data {
             Data::Enum(ref data) => (&data.variants)
                 .into_iter()
@@ -1026,20 +1049,20 @@ impl<'a> Structure<'a> {
                 )]
             }
             Data::Union(_) => {
-                panic!(
-                    "synstructure does not handle untagged unions \
-                     (https://github.com/mystor/synstructure/issues/6)"
-                );
+                return Err(Error::new_spanned(
+                    ast,
+                    "unexpected unsupported untagged union",
+                ));
             }
         };
 
-        Structure {
+        Ok(Structure {
             variants: variants,
             omitted_variants: false,
             ast: ast,
             extra_impl: vec![],
             add_bounds: AddBounds::Both,
-        }
+        })
     }
 
     /// Returns a slice of the variants in this Structure.
@@ -2068,11 +2091,15 @@ impl<'a> Structure<'a> {
     /// be considered bound. This is because we cannot determine which type
     /// parameters are bound by type macros.
     ///
+    /// # Errors
+    ///
+    /// This function will generate a `compile_error!` if additional type
+    /// parameters added by `impl<..>` conflict with generic type parameters on
+    /// the original struct.
+    ///
     /// # Panics
     ///
-    /// This function will panic if the input `TokenStream` is not well-formed, or
-    /// if additional type parameters added by `impl<..>` conflict with generic
-    /// type parameters on the original struct.
+    /// This function will panic if the input `TokenStream` is not well-formed.
     ///
     /// # Example Usage
     ///
@@ -2146,7 +2173,7 @@ impl<'a> Structure<'a> {
     ///
     /// Use `add_bounds` to change which bounds are generated.
     pub fn gen_impl(&self, cfg: TokenStream) -> TokenStream {
-        use syn::parse::{ParseStream, Parser, Result};
+        use syn::parse::{ParseStream, Parser};
 
         // Syn requires parsers to be methods conforming to a strict signature
         let do_parse = |input: ParseStream| -> Result<TokenStream> {
@@ -2198,7 +2225,12 @@ impl<'a> Structure<'a> {
 
             // Add the generics from the original struct in, and then add any
             // additional trait bounds which we need on the type.
-            merge_generics(&mut generics, &self.ast.generics);
+            if let Err(err) = merge_generics(&mut generics, &self.ast.generics) {
+                // Report the merge error as a `compile_error!`, as it may be
+                // triggerable by an end-user.
+                return Ok(err.to_compile_error());
+            }
+
             self.add_trait_bounds(&bound, &mut generics.where_clause, self.add_bounds);
             let (impl_generics, _, where_clause) = generics.split_for_impl();
             let (_, ty_generics, _) = self.ast.generics.split_for_impl();
@@ -2294,8 +2326,16 @@ pub fn unpretty_print<T: std::fmt::Display>(ts: T) -> String {
         for _ in 0..indent {
             res.push_str("    ");
         }
-        s = s[i + 1..].trim_left_matches(' ');
+        s = trim_start_matches(&s[i + 1..], ' ');
     }
     res.push_str(s);
     res
+}
+
+/// `trim_left_matches` has been deprecated in favor of `trim_start_matches`.
+/// This helper silences the warning, as we need to continue using
+/// `trim_left_matches` for rust 1.15 support.
+#[allow(deprecated)]
+fn trim_start_matches(s: &str, c: char) -> &str {
+    s.trim_left_matches(c)
 }
