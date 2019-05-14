@@ -72,6 +72,62 @@ macro_rules! decl_derive {
     };
 }
 
+/// The `decl_attribute!` macro declares a custom attribute wrapper. It will
+/// parse the incoming `TokenStream` into a `synstructure::Structure` object,
+/// and pass it into the inner function.
+///
+/// Your inner function should have the following type:
+///
+/// ```
+/// # extern crate quote;
+/// # extern crate proc_macro2;
+/// # extern crate synstructure;
+/// fn attribute(
+///     attr: proc_macro2::TokenStream,
+///     structure: synstructure::Structure,
+/// ) -> proc_macro2::TokenStream {
+///     unimplemented!()
+/// }
+/// ```
+///
+/// # Usage
+///
+/// ```
+/// # #[macro_use] extern crate quote;
+/// # extern crate proc_macro2;
+/// # extern crate synstructure;
+/// # fn main() {}
+/// fn attribute_interesting(
+///     _attr: proc_macro2::TokenStream,
+///     _structure: synstructure::Structure,
+/// ) -> proc_macro2::TokenStream {
+///     quote! { ... }
+/// }
+///
+/// # const _IGNORE: &'static str = stringify! {
+/// decl_attribute!([interesting] => attribute_interesting);
+/// # };
+/// ```
+/// ```
+#[macro_export]
+macro_rules! decl_attribute {
+    // XXX: Switch to using this variant everywhere?
+    ([$attribute:ident] => $inner:path) => {
+        #[proc_macro_attribute]
+        pub fn $attribute(
+            attr: $crate::macros::TokenStream,
+            i: $crate::macros::TokenStream,
+        ) -> $crate::macros::TokenStream
+        {
+            let parsed = $crate::macros::parse::<$crate::macros::DeriveInput>(i)
+                .expect(concat!("Failed to parse input to `#[",
+                                stringify!($attribute),
+                                "]`"));
+            $inner(attr.into(), $crate::Structure::new(&parsed)).into()
+        }
+    };
+}
+
 /// Run a test on a custom derive. This macro expands both the original struct
 /// and the expansion to ensure that they compile correctly, and confirms that
 /// feeding the original struct into the named derive will produce the written
