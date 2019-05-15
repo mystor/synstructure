@@ -170,6 +170,7 @@ extern crate unicode_xid;
 
 use std::collections::HashSet;
 
+use syn::parse::{ParseStream, Parser};
 use syn::visit::{self, Visit};
 use syn::{
     punctuated, token, Attribute, Data, DeriveInput, Error, Expr, Field, Fields, FieldsNamed,
@@ -2242,73 +2243,130 @@ impl<'a> Structure<'a> {
     ///         };
     ///     }.to_string()
     /// );
+    ///
+    /// // NOTE: you can generate multiple traits with a single call
+    /// assert_eq!(
+    ///     s.gen_impl(quote! {
+    ///         extern crate krate;
+    ///
+    ///         gen impl krate::Trait for @Self {
+    ///             fn a() {}
+    ///         }
+    ///
+    ///         gen impl krate::OtherTrait for @Self {
+    ///             fn b() {}
+    ///         }
+    ///     }).to_string(),
+    ///     quote!{
+    ///         #[allow(non_upper_case_globals)]
+    ///         const _DERIVE_krate_Trait_FOR_A: () = {
+    ///             extern crate krate;
+    ///             impl<T, U> krate::Trait for A<T, U>
+    ///             where
+    ///                 Option<U>: krate::Trait,
+    ///                 U: krate::Trait
+    ///             {
+    ///                 fn a() {}
+    ///             }
+    ///
+    ///             impl<T, U> krate::OtherTrait for A<T, U>
+    ///             where
+    ///                 Option<U>: krate::OtherTrait,
+    ///                 U: krate::OtherTrait
+    ///             {
+    ///                 fn b() {}
+    ///             }
+    ///         };
+    ///     }.to_string()
+    /// );
     /// # }
     /// ```
     ///
     /// Use `add_bounds` to change which bounds are generated.
     pub fn gen_impl(&self, cfg: TokenStream) -> TokenStream {
-        use syn::parse::{ParseStream, Parser};
+        Parser::parse2(
+            |input: ParseStream| -> Result<TokenStream> { self.gen_impl_parse(input, true) },
+            cfg,
+        )
+        .expect("Failed to parse gen_impl")
+    }
 
-        // Syn requires parsers to be methods conforming to a strict signature
-        let do_parse = |input: ParseStream| -> Result<TokenStream> {
-            // Helper lambda to parse the prefix of a gen block.
-            let parse_prefix = |input: ParseStream| -> Result<_> {
-                if input.parse::<Ident>()? != "gen" {
-                    return Err(input.error(""));
-                }
-                let safety = input.parse::<Option<Token![unsafe]>>()?;
-                let _ = input.parse::<Token![impl]>()?;
-                Ok(safety)
-            };
-
-            let mut before = vec![];
-            loop {
-                if let Ok(_) = parse_prefix(&input.fork()) {
-                    break;
-                }
-                before.push(input.parse::<TokenTree>()?);
+    fn gen_impl_parse(&self, input: ParseStream, wrap: bool) -> Result<TokenStream> {
+        fn parse_prefix(input: ParseStream) -> Result<Option<Token![unsafe]>> {
+            if input.parse::<Ident>()? != "gen" {
+                return Err(input.error("Expected keyword `gen`"));
             }
+            let safety = input.parse::<Option<Token![unsafe]>>()?;
+            let _ = input.parse::<Token![impl]>()?;
+            Ok(safety)
+        }
 
-            // Parse the prefix "for real"
-            let safety = parse_prefix(input)?;
-
-            // optional `<>`
-            let mut generics = input.parse::<Generics>()?;
-
-            // @bound
-            let bound = input.parse::<TraitBound>()?;
-
-            // `for @Self`
-            let _ = input.parse::<Token![for]>()?;
-            let _ = input.parse::<Token![@]>()?;
-            let _ = input.parse::<Token![Self]>()?;
-
-            // optional `where ...`
-            generics.where_clause = input.parse()?;
-
-            // Body of the impl
-            let body;
-            braced!(body in input);
-            let body = body.parse::<TokenStream>()?;
-
-            // Tokens following impl
-            let after = input.parse::<TokenStream>()?;
-
-            /* Codegen Logic */
-            let name = &self.ast.ident;
-
-            // Add the generics from the original struct in, and then add any
-            // additional trait bounds which we need on the type.
-            if let Err(err) = merge_generics(&mut generics, &self.ast.generics) {
-                // Report the merge error as a `compile_error!`, as it may be
-                // triggerable by an end-user.
-                return Ok(err.to_compile_error());
+        let mut before = vec![];
+        loop {
+            if let Ok(_) = parse_prefix(&input.fork()) {
+                break;
             }
+            before.push(input.parse::<TokenTree>()?);
+        }
 
-            self.add_trait_bounds(&bound, &mut generics.where_clause, self.add_bounds);
-            let (impl_generics, _, where_clause) = generics.split_for_impl();
-            let (_, ty_generics, _) = self.ast.generics.split_for_impl();
+        // Parse the prefix "for real"
+        let safety = parse_prefix(input)?;
 
+        // optional `<>`
+        let mut generics = input.parse::<Generics>()?;
+
+        // @bound
+        let bound = input.parse::<TraitBound>()?;
+
+        // `for @Self`
+        let _ = input.parse::<Token![for]>()?;
+        let _ = input.parse::<Token![@]>()?;
+        let _ = input.parse::<Token![Self]>()?;
+
+        // optional `where ...`
+        generics.where_clause = input.parse()?;
+
+        // Body of the impl
+        let body;
+        braced!(body in input);
+        let body = body.parse::<TokenStream>()?;
+
+        // Try to parse the next entry in sequence. If this fails, we'll fall
+        // back to just parsing the entire rest of the TokenStream.
+        let maybe_next_impl = self.gen_impl_parse(&input.fork(), false);
+
+        // Eat tokens to the end. Whether or not our speculative nested parse
+        // succeeded, we're going to want to consume the rest of our input.
+        let mut after = input.parse::<TokenStream>()?;
+        if let Ok(stream) = maybe_next_impl {
+            after = stream;
+        }
+        assert!(input.is_empty(), "Should've consumed the rest of our input");
+
+        /* Codegen Logic */
+        let name = &self.ast.ident;
+
+        // Add the generics from the original struct in, and then add any
+        // additional trait bounds which we need on the type.
+        if let Err(err) = merge_generics(&mut generics, &self.ast.generics) {
+            // Report the merge error as a `compile_error!`, as it may be
+            // triggerable by an end-user.
+            return Ok(err.to_compile_error());
+        }
+
+        self.add_trait_bounds(&bound, &mut generics.where_clause, self.add_bounds);
+        let (impl_generics, _, where_clause) = generics.split_for_impl();
+        let (_, ty_generics, _) = self.ast.generics.split_for_impl();
+
+        let generated = quote! {
+            #(#before)*
+            #safety impl #impl_generics #bound for #name #ty_generics #where_clause {
+                #body
+            }
+            #after
+        };
+
+        if wrap {
             let dummy_const: Ident = sanitize_ident(&format!(
                 "_DERIVE_{}_FOR_{}",
                 (&bound).into_token_stream(),
@@ -2318,15 +2376,12 @@ impl<'a> Structure<'a> {
             Ok(quote! {
                 #[allow(non_upper_case_globals)]
                 const #dummy_const: () = {
-                    #(#before)*
-                    #safety impl #impl_generics #bound for #name #ty_generics #where_clause {
-                        #body
-                    }
-                    #after
+                    #generated
                 };
             })
-        };
-        Parser::parse2(do_parse, cfg).expect("Failed to parse gen_impl")
+        } else {
+            Ok(generated)
+        }
     }
 }
 
