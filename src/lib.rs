@@ -161,6 +161,7 @@
 
 extern crate proc_macro;
 extern crate proc_macro2;
+#[allow(unused)]
 #[macro_use]
 extern crate quote;
 #[macro_use]
@@ -169,11 +170,12 @@ extern crate unicode_xid;
 
 use std::collections::HashSet;
 
+use syn::parse::{ParseStream, Parser};
 use syn::visit::{self, Visit};
 use syn::{
-    punctuated, token, Attribute, Data, DeriveInput, Expr, Field, Fields, FieldsNamed,
-    FieldsUnnamed, GenericParam, Generics, Ident, PredicateType, TraitBound, Type, TypeMacro,
-    TypeParamBound, TypePath, WhereClause, WherePredicate,
+    punctuated, token, Attribute, Data, DeriveInput, Error, Expr, Field, Fields, FieldsNamed,
+    FieldsUnnamed, GenericParam, Generics, Ident, PredicateType, Result, TraitBound, Type,
+    TypeMacro, TypeParamBound, TypePath, WhereClause, WherePredicate,
 };
 
 // re-export the quote! macro so we can depend on it being around in our macro's
@@ -274,7 +276,7 @@ fn sanitize_ident(s: &str) -> Ident {
 }
 
 // Internal method to merge two Generics objects together intelligently.
-fn merge_generics(into: &mut Generics, from: &Generics) {
+fn merge_generics(into: &mut Generics, from: &Generics) -> Result<()> {
     // Try to add the param into `into`, and merge parmas with identical names.
     'outer: for p in &from.params {
         for op in &into.params {
@@ -282,21 +284,27 @@ fn merge_generics(into: &mut Generics, from: &Generics) {
                 (&GenericParam::Type(ref otp), &GenericParam::Type(ref tp)) => {
                     // NOTE: This is only OK because syn ignores the span for equality purposes.
                     if otp.ident == tp.ident {
-                        panic!(
-                            "Attempted to merge conflicting generic params: {} and {}",
-                            quote! {#op},
-                            quote! {#p}
-                        );
+                        return Err(Error::new_spanned(
+                            p,
+                            format!(
+                                "Attempted to merge conflicting generic parameters: {} and {}",
+                                quote!(#op),
+                                quote!(#p)
+                            ),
+                        ));
                     }
                 }
                 (&GenericParam::Lifetime(ref olp), &GenericParam::Lifetime(ref lp)) => {
                     // NOTE: This is only OK because syn ignores the span for equality purposes.
                     if olp.lifetime == lp.lifetime {
-                        panic!(
-                            "Attempted to merge conflicting generic params: {} and {}",
-                            quote! {#op},
-                            quote! {#p}
-                        );
+                        return Err(Error::new_spanned(
+                            p,
+                            format!(
+                                "Attempted to merge conflicting generic parameters: {} and {}",
+                                quote!(#op),
+                                quote!(#p)
+                            ),
+                        ));
                     }
                 }
                 // We don't support merging Const parameters, because that wouldn't make much sense.
@@ -311,6 +319,26 @@ fn merge_generics(into: &mut Generics, from: &Generics) {
         into.make_where_clause()
             .predicates
             .extend(from_clause.predicates.iter().cloned());
+    }
+
+    Ok(())
+}
+
+/// Helper method which does the same thing as rustc 1.20's
+/// `Option::get_or_insert_with`. This method is used to keep backwards
+/// compatibility with rustc 1.15.
+fn get_or_insert_with<T, F>(opt: &mut Option<T>, f: F) -> &mut T
+where
+    F: FnOnce() -> T,
+{
+    match *opt {
+        None => *opt = Some(f()),
+        _ => (),
+    }
+
+    match *opt {
+        Some(ref mut v) => v,
+        None => unreachable!(),
     }
 }
 
@@ -981,13 +1009,28 @@ pub struct Structure<'a> {
     omitted_variants: bool,
     ast: &'a DeriveInput,
     extra_impl: Vec<GenericParam>,
+    extra_predicates: Vec<WherePredicate>,
     add_bounds: AddBounds,
 }
 
 impl<'a> Structure<'a> {
     /// Create a new `Structure` with the variants and fields from the passed-in
     /// `DeriveInput`.
+    ///
+    /// # Panics
+    ///
+    /// This method will panic if the provided AST node represents an untagged
+    /// union.
     pub fn new(ast: &'a DeriveInput) -> Self {
+        Self::try_new(ast).expect("Unable to create synstructure::Structure")
+    }
+
+    /// Create a new `Structure` with the variants and fields from the passed-in
+    /// `DeriveInput`.
+    ///
+    /// Unlike `Structure::new`, this method does not panic if the provided AST
+    /// node represents an untagged union.
+    pub fn try_new(ast: &'a DeriveInput) -> Result<Self> {
         let variants = match ast.data {
             Data::Enum(ref data) => (&data.variants)
                 .into_iter()
@@ -1026,20 +1069,21 @@ impl<'a> Structure<'a> {
                 )]
             }
             Data::Union(_) => {
-                panic!(
-                    "synstructure does not handle untagged unions \
-                     (https://github.com/mystor/synstructure/issues/6)"
-                );
+                return Err(Error::new_spanned(
+                    ast,
+                    "unexpected unsupported untagged union",
+                ));
             }
         };
 
-        Structure {
+        Ok(Structure {
             variants: variants,
             omitted_variants: false,
             ast: ast,
             extra_impl: vec![],
+            extra_predicates: vec![],
             add_bounds: AddBounds::Both,
-        }
+        })
     }
 
     /// Returns a slice of the variants in this Structure.
@@ -1274,6 +1318,56 @@ impl<'a> Structure<'a> {
         for variant in &mut self.variants {
             variant.filter(&mut f);
         }
+        self
+    }
+
+    /// Specify additional where predicate bounds which should be generated by
+    /// impl-generating functions such as `gen_impl`, `bound_impl`, and
+    /// `unsafe_bound_impl`.
+    ///
+    /// # Example
+    /// ```
+    /// # #![recursion_limit="128"]
+    /// # #[macro_use] extern crate quote;
+    /// # extern crate synstructure;
+    /// # #[macro_use] extern crate syn;
+    /// # use synstructure::*;
+    /// # fn main() {
+    /// let di: syn::DeriveInput = parse_quote! {
+    ///     enum A<T, U> {
+    ///         B(T),
+    ///         C(Option<U>),
+    ///     }
+    /// };
+    /// let mut s = Structure::new(&di);
+    ///
+    /// // Add an additional where predicate.
+    /// s.add_where_predicate(parse_quote!(T: std::fmt::Display));
+    ///
+    /// assert_eq!(
+    ///     s.bound_impl(quote!(krate::Trait), quote!{
+    ///         fn a() {}
+    ///     }).to_string(),
+    ///     quote!{
+    ///         #[allow(non_upper_case_globals)]
+    ///         #[doc(hidden)]
+    ///         const _DERIVE_krate_Trait_FOR_A: () = {
+    ///             extern crate krate;
+    ///             impl<T, U> krate::Trait for A<T, U>
+    ///                 where T: std::fmt::Display,
+    ///                       T: krate::Trait,
+    ///                       Option<U>: krate::Trait,
+    ///                       U: krate::Trait
+    ///             {
+    ///                 fn a() {}
+    ///             }
+    ///         };
+    ///     }.to_string()
+    /// );
+    /// # }
+    /// ```
+    pub fn add_where_predicate(&mut self, pred: WherePredicate) -> &mut Self {
+        self.extra_predicates.push(pred);
         self
     }
 
@@ -1590,23 +1684,27 @@ impl<'a> Structure<'a> {
         where_clause: &mut Option<WhereClause>,
         mode: AddBounds,
     ) {
+        // If we have any explicit where predicates, make sure to add them first.
+        if !self.extra_predicates.is_empty() {
+            let clause = get_or_insert_with(&mut *where_clause, || WhereClause {
+                where_token: Default::default(),
+                predicates: punctuated::Punctuated::new(),
+            });
+            clause
+                .predicates
+                .extend(self.extra_predicates.iter().cloned());
+        }
+
         let mut seen = HashSet::new();
         let mut pred = |ty: Type| {
             if !seen.contains(&ty) {
                 seen.insert(ty.clone());
 
-                // Ensure we have a where clause, because we need to use it. We
-                // can't use `get_or_insert_with`, because it isn't supported on all
-                // rustc versions we support (this is a Rust 1.20+ feature).
-                if where_clause.is_none() {
-                    *where_clause = Some(WhereClause {
-                        where_token: Default::default(),
-                        predicates: punctuated::Punctuated::new(),
-                    });
-                }
-                let clause = where_clause.as_mut().unwrap();
-
                 // Add a predicate.
+                let clause = get_or_insert_with(&mut *where_clause, || WhereClause {
+                    where_token: Default::default(),
+                    predicates: punctuated::Punctuated::new(),
+                });
                 clause.predicates.push(WherePredicate::Type(PredicateType {
                     lifetimes: None,
                     bounded_ty: ty,
@@ -2068,11 +2166,15 @@ impl<'a> Structure<'a> {
     /// be considered bound. This is because we cannot determine which type
     /// parameters are bound by type macros.
     ///
+    /// # Errors
+    ///
+    /// This function will generate a `compile_error!` if additional type
+    /// parameters added by `impl<..>` conflict with generic type parameters on
+    /// the original struct.
+    ///
     /// # Panics
     ///
-    /// This function will panic if the input `TokenStream` is not well-formed, or
-    /// if additional type parameters added by `impl<..>` conflict with generic
-    /// type parameters on the original struct.
+    /// This function will panic if the input `TokenStream` is not well-formed.
     ///
     /// # Example Usage
     ///
@@ -2141,68 +2243,130 @@ impl<'a> Structure<'a> {
     ///         };
     ///     }.to_string()
     /// );
+    ///
+    /// // NOTE: you can generate multiple traits with a single call
+    /// assert_eq!(
+    ///     s.gen_impl(quote! {
+    ///         extern crate krate;
+    ///
+    ///         gen impl krate::Trait for @Self {
+    ///             fn a() {}
+    ///         }
+    ///
+    ///         gen impl krate::OtherTrait for @Self {
+    ///             fn b() {}
+    ///         }
+    ///     }).to_string(),
+    ///     quote!{
+    ///         #[allow(non_upper_case_globals)]
+    ///         const _DERIVE_krate_Trait_FOR_A: () = {
+    ///             extern crate krate;
+    ///             impl<T, U> krate::Trait for A<T, U>
+    ///             where
+    ///                 Option<U>: krate::Trait,
+    ///                 U: krate::Trait
+    ///             {
+    ///                 fn a() {}
+    ///             }
+    ///
+    ///             impl<T, U> krate::OtherTrait for A<T, U>
+    ///             where
+    ///                 Option<U>: krate::OtherTrait,
+    ///                 U: krate::OtherTrait
+    ///             {
+    ///                 fn b() {}
+    ///             }
+    ///         };
+    ///     }.to_string()
+    /// );
     /// # }
     /// ```
     ///
     /// Use `add_bounds` to change which bounds are generated.
     pub fn gen_impl(&self, cfg: TokenStream) -> TokenStream {
-        use syn::parse::{ParseStream, Parser, Result};
+        Parser::parse2(
+            |input: ParseStream| -> Result<TokenStream> { self.gen_impl_parse(input, true) },
+            cfg,
+        )
+        .expect("Failed to parse gen_impl")
+    }
 
-        // Syn requires parsers to be methods conforming to a strict signature
-        let do_parse = |input: ParseStream| -> Result<TokenStream> {
-            // Helper lambda to parse the prefix of a gen block.
-            let parse_prefix = |input: ParseStream| -> Result<_> {
-                if input.parse::<Ident>()? != "gen" {
-                    return Err(input.error(""));
-                }
-                let safety = input.parse::<Option<Token![unsafe]>>()?;
-                let _ = input.parse::<Token![impl]>()?;
-                Ok(safety)
-            };
-
-            let mut before = vec![];
-            loop {
-                if let Ok(_) = parse_prefix(&input.fork()) {
-                    break;
-                }
-                before.push(input.parse::<TokenTree>()?);
+    fn gen_impl_parse(&self, input: ParseStream, wrap: bool) -> Result<TokenStream> {
+        fn parse_prefix(input: ParseStream) -> Result<Option<Token![unsafe]>> {
+            if input.parse::<Ident>()? != "gen" {
+                return Err(input.error("Expected keyword `gen`"));
             }
+            let safety = input.parse::<Option<Token![unsafe]>>()?;
+            let _ = input.parse::<Token![impl]>()?;
+            Ok(safety)
+        }
 
-            // Parse the prefix "for real"
-            let safety = parse_prefix(input)?;
+        let mut before = vec![];
+        loop {
+            if let Ok(_) = parse_prefix(&input.fork()) {
+                break;
+            }
+            before.push(input.parse::<TokenTree>()?);
+        }
 
-            // optional `<>`
-            let mut generics = input.parse::<Generics>()?;
+        // Parse the prefix "for real"
+        let safety = parse_prefix(input)?;
 
-            // @bound
-            let bound = input.parse::<TraitBound>()?;
+        // optional `<>`
+        let mut generics = input.parse::<Generics>()?;
 
-            // `for @Self`
-            let _ = input.parse::<Token![for]>()?;
-            let _ = input.parse::<Token![@]>()?;
-            let _ = input.parse::<Token![Self]>()?;
+        // @bound
+        let bound = input.parse::<TraitBound>()?;
 
-            // optional `where ...`
-            generics.where_clause = input.parse()?;
+        // `for @Self`
+        let _ = input.parse::<Token![for]>()?;
+        let _ = input.parse::<Token![@]>()?;
+        let _ = input.parse::<Token![Self]>()?;
 
-            // Body of the impl
-            let body;
-            braced!(body in input);
-            let body = body.parse::<TokenStream>()?;
+        // optional `where ...`
+        generics.where_clause = input.parse()?;
 
-            // Tokens following impl
-            let after = input.parse::<TokenStream>()?;
+        // Body of the impl
+        let body;
+        braced!(body in input);
+        let body = body.parse::<TokenStream>()?;
 
-            /* Codegen Logic */
-            let name = &self.ast.ident;
+        // Try to parse the next entry in sequence. If this fails, we'll fall
+        // back to just parsing the entire rest of the TokenStream.
+        let maybe_next_impl = self.gen_impl_parse(&input.fork(), false);
 
-            // Add the generics from the original struct in, and then add any
-            // additional trait bounds which we need on the type.
-            merge_generics(&mut generics, &self.ast.generics);
-            self.add_trait_bounds(&bound, &mut generics.where_clause, self.add_bounds);
-            let (impl_generics, _, where_clause) = generics.split_for_impl();
-            let (_, ty_generics, _) = self.ast.generics.split_for_impl();
+        // Eat tokens to the end. Whether or not our speculative nested parse
+        // succeeded, we're going to want to consume the rest of our input.
+        let mut after = input.parse::<TokenStream>()?;
+        if let Ok(stream) = maybe_next_impl {
+            after = stream;
+        }
+        assert!(input.is_empty(), "Should've consumed the rest of our input");
 
+        /* Codegen Logic */
+        let name = &self.ast.ident;
+
+        // Add the generics from the original struct in, and then add any
+        // additional trait bounds which we need on the type.
+        if let Err(err) = merge_generics(&mut generics, &self.ast.generics) {
+            // Report the merge error as a `compile_error!`, as it may be
+            // triggerable by an end-user.
+            return Ok(err.to_compile_error());
+        }
+
+        self.add_trait_bounds(&bound, &mut generics.where_clause, self.add_bounds);
+        let (impl_generics, _, where_clause) = generics.split_for_impl();
+        let (_, ty_generics, _) = self.ast.generics.split_for_impl();
+
+        let generated = quote! {
+            #(#before)*
+            #safety impl #impl_generics #bound for #name #ty_generics #where_clause {
+                #body
+            }
+            #after
+        };
+
+        if wrap {
             let dummy_const: Ident = sanitize_ident(&format!(
                 "_DERIVE_{}_FOR_{}",
                 (&bound).into_token_stream(),
@@ -2212,15 +2376,12 @@ impl<'a> Structure<'a> {
             Ok(quote! {
                 #[allow(non_upper_case_globals)]
                 const #dummy_const: () = {
-                    #(#before)*
-                    #safety impl #impl_generics #bound for #name #ty_generics #where_clause {
-                        #body
-                    }
-                    #after
+                    #generated
                 };
             })
-        };
-        Parser::parse2(do_parse, cfg).expect("Failed to parse gen_impl")
+        } else {
+            Ok(generated)
+        }
     }
 }
 
@@ -2294,8 +2455,66 @@ pub fn unpretty_print<T: std::fmt::Display>(ts: T) -> String {
         for _ in 0..indent {
             res.push_str("    ");
         }
-        s = s[i + 1..].trim_left_matches(' ');
+        s = trim_start_matches(&s[i + 1..], ' ');
     }
     res.push_str(s);
     res
+}
+
+/// `trim_left_matches` has been deprecated in favor of `trim_start_matches`.
+/// This helper silences the warning, as we need to continue using
+/// `trim_left_matches` for rust 1.15 support.
+#[allow(deprecated)]
+fn trim_start_matches(s: &str, c: char) -> &str {
+    s.trim_left_matches(c)
+}
+
+/// Helper trait describing values which may be returned by macro implementation
+/// methods used by this crate's macros.
+pub trait MacroResult {
+    /// Convert this result into a `Result` for further processing / validation.
+    fn into_result(self) -> Result<TokenStream>;
+
+    /// Convert this result into a `proc_macro::TokenStream`, ready to return
+    /// from a native `proc_macro` implementation.
+    ///
+    /// If `into_result()` would return an `Err`, this method should instead
+    /// generate a `compile_error!` invocation to nicely report the error.
+    fn into_stream(self) -> proc_macro::TokenStream;
+}
+
+impl MacroResult for proc_macro::TokenStream {
+    fn into_result(self) -> Result<TokenStream> {
+        Ok(self.into())
+    }
+
+    fn into_stream(self) -> proc_macro::TokenStream {
+        self
+    }
+}
+
+impl MacroResult for TokenStream {
+    fn into_result(self) -> Result<TokenStream> {
+        Ok(self)
+    }
+
+    fn into_stream(self) -> proc_macro::TokenStream {
+        self.into()
+    }
+}
+
+impl<T: MacroResult> MacroResult for Result<T> {
+    fn into_result(self) -> Result<TokenStream> {
+        match self {
+            Ok(v) => v.into_result(),
+            Err(err) => Err(err),
+        }
+    }
+
+    fn into_stream(self) -> proc_macro::TokenStream {
+        match self {
+            Ok(v) => v.into_stream(),
+            Err(err) => err.to_compile_error().into(),
+        }
+    }
 }

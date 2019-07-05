@@ -11,13 +11,22 @@ pub use syn::{parse, parse_str, DeriveInput};
 /// incoming `TokenStream` into a `synstructure::Structure` object, and pass it
 /// into the inner function.
 ///
-/// Your inner function should have the following type:
+/// Your inner function should take a `synstructure::Structure` by value, and
+/// return a type implementing `synstructure::MacroResult`, for example:
 ///
 /// ```
 /// # extern crate quote;
+/// # extern crate proc_macro;
 /// # extern crate proc_macro2;
 /// # extern crate synstructure;
-/// fn derive(input: synstructure::Structure) -> proc_macro2::TokenStream {
+/// # extern crate syn;
+/// fn derive_simple(input: synstructure::Structure) -> proc_macro2::TokenStream {
+///     unimplemented!()
+/// }
+///
+/// fn derive_result(input: synstructure::Structure)
+///     -> syn::Result<proc_macro2::TokenStream>
+/// {
 ///     unimplemented!()
 /// }
 /// ```
@@ -61,13 +70,16 @@ macro_rules! decl_derive {
         #[allow(non_snake_case)]
         pub fn $derives(
             i: $crate::macros::TokenStream
-        ) -> $crate::macros::TokenStream
-        {
-            let parsed = $crate::macros::parse::<$crate::macros::DeriveInput>(i)
-                .expect(concat!("Failed to parse input to `#[derive(",
-                                stringify!($derives),
-                                ")]`"));
-            $inner($crate::Structure::new(&parsed)).into()
+        ) -> $crate::macros::TokenStream {
+            match $crate::macros::parse::<$crate::macros::DeriveInput>(i) {
+                Ok(p) => {
+                    match $crate::Structure::try_new(&p) {
+                        Ok(s) => $crate::MacroResult::into_stream($inner(s)),
+                        Err(e) => e.to_compile_error().into(),
+                    }
+                }
+                Err(e) => e.to_compile_error().into(),
+            }
         }
     };
 }
@@ -117,12 +129,13 @@ macro_rules! decl_attribute {
             attr: $crate::macros::TokenStream,
             i: $crate::macros::TokenStream,
         ) -> $crate::macros::TokenStream {
-            let parsed = $crate::macros::parse::<$crate::macros::DeriveInput>(i).expect(concat!(
-                "Failed to parse input to `#[",
-                stringify!($attribute),
-                "]`"
-            ));
-            $inner(attr.into(), $crate::Structure::new(&parsed)).into()
+            match $crate::macros::parse::<$crate::macros::DeriveInput>(i) {
+                Ok(p) => match $crate::Structure::try_new(&p) {
+                    Ok(s) => $crate::MacroResult::into_stream($inner(attr.into(), s)),
+                    Err(e) => e.to_compile_error().into(),
+                },
+                Err(e) => e.to_compile_error().into(),
+            }
         }
     };
 }
@@ -143,8 +156,11 @@ macro_rules! decl_attribute {
 /// # #[macro_use] extern crate quote;
 /// # extern crate proc_macro2;
 /// # #[macro_use] extern crate synstructure;
-/// fn test_derive_example(_s: synstructure::Structure) -> proc_macro2::TokenStream {
-///     quote! { const YOUR_OUTPUT: &'static str = "here"; }
+/// # extern crate syn;
+/// fn test_derive_example(_s: synstructure::Structure)
+///     -> Result<proc_macro2::TokenStream, syn::Error>
+/// {
+///     Ok(quote! { const YOUR_OUTPUT: &'static str = "here"; })
 /// }
 ///
 /// fn main() {
@@ -176,11 +192,20 @@ macro_rules! test_derive {
         {
             let i = stringify!( $($i)* );
             let parsed = $crate::macros::parse_str::<$crate::macros::DeriveInput>(i)
-                .expect(concat!("Failed to parse input to `#[derive(",
-                                stringify!($name),
-                                ")]`"));
+                .expect(concat!(
+                    "Failed to parse input to `#[derive(",
+                    stringify!($name),
+                    ")]`",
+                ));
 
-            let res = $name($crate::Structure::new(&parsed));
+            let raw_res = $name($crate::Structure::new(&parsed));
+            let res = $crate::MacroResult::into_result(raw_res)
+                .expect(concat!(
+                    "Procedural macro failed for `#[derive(",
+                    stringify!($name),
+                    ")]`",
+                ));
+
             let expected = stringify!( $($o)* )
                 .parse::<$crate::macros::TokenStream2>()
                 .expect("output should be a valid TokenStream");
@@ -201,7 +226,6 @@ got:
                     $crate::unpretty_print(&res),
                 );
             }
-            // assert_eq!(res, expected_toks)
         }
     };
 }
