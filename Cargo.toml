@@ -1,6 +1,6 @@
 [package]
 name = "synstructure"
-version = "0.10.2"
+version = "0.10.3"
 authors = ["Nika Layzell <nika@thelayzells.com>"]
 
 description = "Helper methods and macros for custom derives"

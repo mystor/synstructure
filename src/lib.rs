@@ -159,6 +159,9 @@
 //! For more example usage, consider investigating the `abomonation_derive` crate,
 //! which makes use of this crate, and is fairly simple.
 
+// https://github.com/rust-lang/rust/issues/62132
+#![recursion_limit="128"]
+
 extern crate proc_macro;
 extern crate proc_macro2;
 #[macro_use]

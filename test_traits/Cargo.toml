@@ -8,3 +8,7 @@ authors = ["Nika Layzell <nika@thelayzells.com>"]
 
 [lib]
 path = "lib.rs"
+
+[dependencies]
+# To trigger https://github.com/rust-lang/rust/issues/62132
+syn = { version = "0.15", features = ["full"] }
