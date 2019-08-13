@@ -2059,7 +2059,7 @@ impl<'a> Structure<'a> {
         let mut extern_crate = quote!();
         if bound.path.leading_colon.is_none() {
             if let Some(ref seg) = bound.path.segments.first() {
-                let seg = seg.value();
+                let seg = &seg.ident;
                 extern_crate = quote! { extern crate #seg; };
             }
         }
