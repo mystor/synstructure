@@ -207,7 +207,7 @@ pub enum BindStyle {
 
 impl ToTokens for BindStyle {
     fn to_tokens(&self, tokens: &mut TokenStream) {
-        match *self {
+        match self {
             BindStyle::Move => {}
             BindStyle::MoveMut => quote_spanned!(Span::call_site() => mut).to_tokens(tokens),
             BindStyle::Ref => quote_spanned!(Span::call_site() => ref).to_tokens(tokens),
@@ -263,7 +263,7 @@ fn merge_generics(into: &mut Generics, from: &Generics) -> Result<()> {
     for p in &from.params {
         for op in &into.params {
             match (op, p) {
-                (&GenericParam::Type(ref otp), &GenericParam::Type(ref tp)) => {
+                (GenericParam::Type(otp), GenericParam::Type(tp)) => {
                     // NOTE: This is only OK because syn ignores the span for equality purposes.
                     if otp.ident == tp.ident {
                         return Err(Error::new_spanned(
@@ -276,7 +276,7 @@ fn merge_generics(into: &mut Generics, from: &Generics) -> Result<()> {
                         ));
                     }
                 }
-                (&GenericParam::Lifetime(ref olp), &GenericParam::Lifetime(ref lp)) => {
+                (GenericParam::Lifetime(olp), GenericParam::Lifetime(lp)) => {
                     // NOTE: This is only OK because syn ignores the span for equality purposes.
                     if olp.lifetime == lp.lifetime {
                         return Err(Error::new_spanned(
@@ -297,7 +297,7 @@ fn merge_generics(into: &mut Generics, from: &Generics) -> Result<()> {
     }
 
     // Add any where clauses from the input generics object.
-    if let Some(ref from_clause) = from.where_clause {
+    if let Some(from_clause) = &from.where_clause {
         into.make_where_clause()
             .predicates
             .extend(from_clause.predicates.iter().cloned());
@@ -317,8 +317,8 @@ where
         *opt = Some(f());
     }
 
-    match *opt {
-        Some(ref mut v) => v,
+    match opt {
+        Some(v) => v,
         None => unreachable!(),
     }
 }
@@ -379,10 +379,10 @@ impl<'a> BindingInfo<'a> {
     /// ```
     pub fn pat(&self) -> TokenStream {
         let BindingInfo {
-            ref binding,
-            ref style,
+            binding,
+            style,
             ..
-        } = *self;
+        } = self;
         quote!(#style #binding)
     }
 
@@ -455,7 +455,7 @@ fn get_ty_params(field: &Field, generics: &Generics) -> Vec<bool> {
         // this desirable?
         fn visit_ident(&mut self, id: &Ident) {
             for (idx, i) in self.generics.params.iter().enumerate() {
-                if let GenericParam::Type(ref tparam) = *i {
+                if let GenericParam::Type(tparam) = i {
                     if tparam.ident == *id {
                         self.result[idx] = true;
                     }
@@ -485,14 +485,14 @@ fn get_ty_params(field: &Field, generics: &Generics) -> Vec<bool> {
 
 impl<'a> VariantInfo<'a> {
     fn new(ast: VariantAst<'a>, prefix: Option<&'a Ident>, generics: &'a Generics) -> Self {
-        let bindings = match *ast.fields {
+        let bindings = match ast.fields {
             Fields::Unit => vec![],
             Fields::Unnamed(FieldsUnnamed {
-                unnamed: ref fields,
+                unnamed: fields,
                 ..
             })
             | Fields::Named(FieldsNamed {
-                named: ref fields, ..
+                named: fields, ..
             }) => {
                 fields
                     .into_iter()
@@ -569,7 +569,7 @@ impl<'a> VariantInfo<'a> {
             quote!(::).to_tokens(&mut t);
         }
         self.ast.ident.to_tokens(&mut t);
-        match *self.ast.fields {
+        match self.ast.fields {
             Fields::Unit => {
                 assert!(self.bindings.is_empty());
             }
@@ -640,9 +640,9 @@ impl<'a> VariantInfo<'a> {
         }
         self.ast.ident.to_tokens(&mut t);
 
-        match *self.ast.fields {
+        match &self.ast.fields {
             Fields::Unit => (),
-            Fields::Unnamed(FieldsUnnamed { ref unnamed, .. }) => {
+            Fields::Unnamed(FieldsUnnamed { unnamed, .. }) => {
                 token::Paren::default().surround(&mut t, |t| {
                     for (i, field) in unnamed.into_iter().enumerate() {
                         func(field, i).to_tokens(t);
@@ -650,7 +650,7 @@ impl<'a> VariantInfo<'a> {
                     }
                 })
             }
-            Fields::Named(FieldsNamed { ref named, .. }) => {
+            Fields::Named(FieldsNamed { named, .. }) => {
                 token::Brace::default().surround(&mut t, |t| {
                     for (i, field) in named.into_iter().enumerate() {
                         field.ident.to_tokens(t);
@@ -959,8 +959,8 @@ impl<'a> Structure<'a> {
     /// Unlike `Structure::new`, this method does not panic if the provided AST
     /// node represents an untagged union.
     pub fn try_new(ast: &'a DeriveInput) -> Result<Self> {
-        let variants = match ast.data {
-            Data::Enum(ref data) => (&data.variants)
+        let variants = match &ast.data {
+            Data::Enum(data) => (&data.variants)
                 .into_iter()
                 .map(|v| {
                     VariantInfo::new(
@@ -975,7 +975,7 @@ impl<'a> Structure<'a> {
                     )
                 })
                 .collect::<Vec<_>>(),
-            Data::Struct(ref data) => {
+            Data::Struct(data) => {
                 // SAFETY NOTE: Normally putting an `Expr` in static storage
                 // wouldn't be safe, because it could contain `Term` objects
                 // which use thread-local interning. However, this static always
@@ -1907,7 +1907,7 @@ impl<'a> Structure<'a> {
         // scope.
         let mut extern_crate = quote!();
         if bound.path.leading_colon.is_none() {
-            if let Some(ref seg) = bound.path.segments.first() {
+            if let Some(seg) = bound.path.segments.first() {
                 let seg = &seg.ident;
                 extern_crate = quote! { extern crate #seg; };
             }
