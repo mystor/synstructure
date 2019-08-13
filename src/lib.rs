@@ -233,9 +233,8 @@ fn fetch_generics<'a>(set: &[bool], generics: &'a Generics) -> Vec<&'a Ident> {
     let mut tys = vec![];
     for (&seen, param) in set.iter().zip(generics.params.iter()) {
         if seen {
-            match *param {
-                GenericParam::Type(ref tparam) => tys.push(&tparam.ident),
-                _ => {}
+            if let GenericParam::Type(tparam) = param {
+                tys.push(&tparam.ident)
             }
         }
     }
@@ -261,7 +260,7 @@ fn sanitize_ident(s: &str) -> Ident {
 // Internal method to merge two Generics objects together intelligently.
 fn merge_generics(into: &mut Generics, from: &Generics) -> Result<()> {
     // Try to add the param into `into`, and merge parmas with identical names.
-    'outer: for p in &from.params {
+    for p in &from.params {
         for op in &into.params {
             match (op, p) {
                 (&GenericParam::Type(ref otp), &GenericParam::Type(ref tp)) => {
@@ -314,9 +313,8 @@ fn get_or_insert_with<T, F>(opt: &mut Option<T>, f: F) -> &mut T
 where
     F: FnOnce() -> T,
 {
-    match *opt {
-        None => *opt = Some(f()),
-        _ => (),
+    if opt.is_none() {
+        *opt = Some(f());
     }
 
     match *opt {
@@ -444,7 +442,7 @@ pub struct VariantInfo<'a> {
 /// Helper function used by the VariantInfo constructor. Walks all of the types
 /// in `field` and returns a list of the type parameters from `ty_params` which
 /// are referenced in the field.
-fn get_ty_params<'a>(field: &Field, generics: &Generics) -> Vec<bool> {
+fn get_ty_params(field: &Field, generics: &Generics) -> Vec<bool> {
     // Helper type. Discovers all identifiers inside of the visited type,
     // and calls a callback with them.
     struct BoundTypeLocator<'a> {
@@ -477,7 +475,7 @@ fn get_ty_params<'a>(field: &Field, generics: &Generics) -> Vec<bool> {
 
     let mut btl = BoundTypeLocator {
         result: vec![false; generics.params.len()],
-        generics: generics,
+        generics,
     };
 
     btl.visit_type(&field.ty);
@@ -505,8 +503,8 @@ impl<'a> VariantInfo<'a> {
                             // when deriving on private fields.
                             binding: Ident::new(&format!("__binding_{}", i), Span::call_site()),
                             style: BindStyle::Ref,
-                            field: field,
-                            generics: generics,
+                            field,
+                            generics,
                             seen_generics: get_ty_params(field, generics),
                         }
                     })
@@ -515,11 +513,11 @@ impl<'a> VariantInfo<'a> {
         };
 
         VariantInfo {
-            prefix: prefix,
-            bindings: bindings,
+            prefix,
+            bindings,
             omitted_fields: false,
-            ast: ast,
-            generics: generics,
+            ast,
+            generics,
         }
     }
 
@@ -573,7 +571,7 @@ impl<'a> VariantInfo<'a> {
         self.ast.ident.to_tokens(&mut t);
         match *self.ast.fields {
             Fields::Unit => {
-                assert!(self.bindings.len() == 0);
+                assert!(self.bindings.is_empty());
             }
             Fields::Unnamed(..) => token::Paren(Span::call_site()).surround(&mut t, |t| {
                 for binding in &self.bindings {
@@ -1007,9 +1005,9 @@ impl<'a> Structure<'a> {
         };
 
         Ok(Structure {
-            variants: variants,
+            variants,
             omitted_variants: false,
-            ast: ast,
+            ast,
             extra_impl: vec![],
             extra_predicates: vec![],
             add_bounds: AddBounds::Both,
@@ -1891,7 +1889,7 @@ impl<'a> Structure<'a> {
         let (impl_generics, _, _) = gen_clone.split_for_impl();
         let (_, ty_generics, where_clause) = self.ast.generics.split_for_impl();
 
-        let bound = syn::parse2::<TraitBound>(path.into())
+        let bound = syn::parse2::<TraitBound>(path)
             .expect("`path` argument must be a valid rust trait bound");
 
         let mut where_clause = where_clause.cloned();
@@ -2148,7 +2146,7 @@ impl<'a> Structure<'a> {
 
         let mut before = vec![];
         loop {
-            if let Ok(_) = parse_prefix(&input.fork()) {
+            if parse_prefix(&input.fork()).is_ok() {
                 break;
             }
             before.push(input.parse::<TokenTree>()?);
@@ -2287,12 +2285,12 @@ pub fn unpretty_print<T: std::fmt::Display>(ts: T) -> String {
     let mut s = &raw_s[..];
     let mut indent = 0;
     while let Some(i) = s.find(&['(', '{', '[', ')', '}', ']', ';'][..]) {
-        match &s[i..i + 1] {
+        match &s[i..=i] {
             "(" | "{" | "[" => indent += 1,
             ")" | "}" | "]" => indent -= 1,
             _ => {}
         }
-        res.push_str(&s[..i + 1]);
+        res.push_str(&s[..=i]);
         res.push('\n');
         for _ in 0..indent {
             res.push_str("    ");
