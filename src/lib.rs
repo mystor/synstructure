@@ -160,13 +160,13 @@
 //! which makes use of this crate, and is fairly simple.
 
 extern crate proc_macro;
-extern crate proc_macro2;
+
 #[allow(unused)]
 #[macro_use]
 extern crate quote;
 #[macro_use]
 extern crate syn;
-extern crate unicode_xid;
+
 
 use std::collections::HashSet;
 
@@ -739,7 +739,7 @@ impl<'a> VariantInfo<'a> {
     /// ```
     pub fn each<F, R>(&self, mut f: F) -> TokenStream
     where
-        F: FnMut(&BindingInfo) -> R,
+        F: FnMut(&BindingInfo<'_>) -> R,
         R: ToTokens,
     {
         let pat = self.pat();
@@ -787,7 +787,7 @@ impl<'a> VariantInfo<'a> {
     /// ```
     pub fn fold<F, I, R>(&self, init: I, mut f: F) -> TokenStream
     where
-        F: FnMut(TokenStream, &BindingInfo) -> R,
+        F: FnMut(TokenStream, &BindingInfo<'_>) -> R,
         I: ToTokens,
         R: ToTokens,
     {
@@ -844,7 +844,7 @@ impl<'a> VariantInfo<'a> {
     /// ```
     pub fn filter<F>(&mut self, f: F) -> &mut Self
     where
-        F: FnMut(&BindingInfo) -> bool,
+        F: FnMut(&BindingInfo<'_>) -> bool,
     {
         let before_len = self.bindings.len();
         self.bindings.retain(f);
@@ -902,7 +902,7 @@ impl<'a> VariantInfo<'a> {
     /// ```
     pub fn bind_with<F>(&mut self, mut f: F) -> &mut Self
     where
-        F: FnMut(&BindingInfo) -> BindStyle,
+        F: FnMut(&BindingInfo<'_>) -> BindStyle,
     {
         for binding in &mut self.bindings {
             binding.style = f(&binding);
@@ -1145,7 +1145,7 @@ impl<'a> Structure<'a> {
     /// ```
     pub fn each<F, R>(&self, mut f: F) -> TokenStream
     where
-        F: FnMut(&BindingInfo) -> R,
+        F: FnMut(&BindingInfo<'_>) -> R,
         R: ToTokens,
     {
         let mut t = TokenStream::new();
@@ -1198,7 +1198,7 @@ impl<'a> Structure<'a> {
     /// ```
     pub fn fold<F, I, R>(&self, init: I, mut f: F) -> TokenStream
     where
-        F: FnMut(TokenStream, &BindingInfo) -> R,
+        F: FnMut(TokenStream, &BindingInfo<'_>) -> R,
         I: ToTokens,
         R: ToTokens,
     {
@@ -1253,7 +1253,7 @@ impl<'a> Structure<'a> {
     /// ```
     pub fn each_variant<F, R>(&self, mut f: F) -> TokenStream
     where
-        F: FnMut(&VariantInfo) -> R,
+        F: FnMut(&VariantInfo<'_>) -> R,
         R: ToTokens,
     {
         let mut t = TokenStream::new();
@@ -1313,7 +1313,7 @@ impl<'a> Structure<'a> {
     /// ```
     pub fn filter<F>(&mut self, mut f: F) -> &mut Self
     where
-        F: FnMut(&BindingInfo) -> bool,
+        F: FnMut(&BindingInfo<'_>) -> bool,
     {
         for variant in &mut self.variants {
             variant.filter(&mut f);
@@ -1461,7 +1461,7 @@ impl<'a> Structure<'a> {
     /// ```
     pub fn filter_variants<F>(&mut self, f: F) -> &mut Self
     where
-        F: FnMut(&VariantInfo) -> bool,
+        F: FnMut(&VariantInfo<'_>) -> bool,
     {
         let before_len = self.variants.len();
         self.variants.retain(f);
@@ -1519,7 +1519,7 @@ impl<'a> Structure<'a> {
     /// ```
     pub fn bind_with<F>(&mut self, mut f: F) -> &mut Self
     where
-        F: FnMut(&BindingInfo) -> BindStyle,
+        F: FnMut(&BindingInfo<'_>) -> BindStyle,
     {
         for variant in &mut self.variants {
             variant.bind_with(&mut f);
@@ -2285,14 +2285,14 @@ impl<'a> Structure<'a> {
     /// Use `add_bounds` to change which bounds are generated.
     pub fn gen_impl(&self, cfg: TokenStream) -> TokenStream {
         Parser::parse2(
-            |input: ParseStream| -> Result<TokenStream> { self.gen_impl_parse(input, true) },
+            |input: ParseStream<'_>| -> Result<TokenStream> { self.gen_impl_parse(input, true) },
             cfg,
         )
         .expect("Failed to parse gen_impl")
     }
 
-    fn gen_impl_parse(&self, input: ParseStream, wrap: bool) -> Result<TokenStream> {
-        fn parse_prefix(input: ParseStream) -> Result<Option<Token![unsafe]>> {
+    fn gen_impl_parse(&self, input: ParseStream<'_>, wrap: bool) -> Result<TokenStream> {
+        fn parse_prefix(input: ParseStream<'_>) -> Result<Option<Token![unsafe]>> {
             if input.parse::<Ident>()? != "gen" {
                 return Err(input.error("Expected keyword `gen`"));
             }
