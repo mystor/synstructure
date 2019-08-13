@@ -15,11 +15,6 @@ pub use syn::{parse, parse_str, DeriveInput};
 /// return a type implementing `synstructure::MacroResult`, for example:
 ///
 /// ```
-/// # extern crate quote;
-/// # extern crate proc_macro;
-/// # extern crate proc_macro2;
-/// # extern crate synstructure;
-/// # extern crate syn;
 /// fn derive_simple(input: synstructure::Structure) -> proc_macro2::TokenStream {
 ///     unimplemented!()
 /// }
@@ -35,12 +30,8 @@ pub use syn::{parse, parse_str, DeriveInput};
 ///
 /// ### Without Attributes
 /// ```
-/// # #[macro_use] extern crate quote;
-/// # extern crate proc_macro2;
-/// # extern crate synstructure;
-/// # fn main() {}
 /// fn derive_interesting(_input: synstructure::Structure) -> proc_macro2::TokenStream {
-///     quote! { ... }
+///     quote::quote! { ... }
 /// }
 ///
 /// # const _IGNORE: &'static str = stringify! {
@@ -50,12 +41,9 @@ pub use syn::{parse, parse_str, DeriveInput};
 ///
 /// ### With Attributes
 /// ```
-/// # #[macro_use] extern crate quote;
-/// # extern crate proc_macro2;
-/// # extern crate synstructure;
 /// # fn main() {}
 /// fn derive_interesting(_input: synstructure::Structure) -> proc_macro2::TokenStream {
-///     quote! { ... }
+///     quote::quote! { ... }
 /// }
 ///
 /// # const _IGNORE: &'static str = stringify! {
@@ -91,9 +79,6 @@ macro_rules! decl_derive {
 /// Your inner function should have the following type:
 ///
 /// ```
-/// # extern crate quote;
-/// # extern crate proc_macro2;
-/// # extern crate synstructure;
 /// fn attribute(
 ///     attr: proc_macro2::TokenStream,
 ///     structure: synstructure::Structure,
@@ -105,15 +90,11 @@ macro_rules! decl_derive {
 /// # Usage
 ///
 /// ```
-/// # #[macro_use] extern crate quote;
-/// # extern crate proc_macro2;
-/// # extern crate synstructure;
-/// # fn main() {}
 /// fn attribute_interesting(
 ///     _attr: proc_macro2::TokenStream,
 ///     _structure: synstructure::Structure,
 /// ) -> proc_macro2::TokenStream {
-///     quote! { ... }
+///     quote::quote! { ... }
 /// }
 ///
 /// # const _IGNORE: &'static str = stringify! {
@@ -153,18 +134,14 @@ macro_rules! decl_attribute {
 /// # Usage
 ///
 /// ```
-/// # #[macro_use] extern crate quote;
-/// # extern crate proc_macro2;
-/// # #[macro_use] extern crate synstructure;
-/// # extern crate syn;
 /// fn test_derive_example(_s: synstructure::Structure)
 ///     -> Result<proc_macro2::TokenStream, syn::Error>
 /// {
-///     Ok(quote! { const YOUR_OUTPUT: &'static str = "here"; })
+///     Ok(quote::quote! { const YOUR_OUTPUT: &'static str = "here"; })
 /// }
 ///
 /// fn main() {
-///     test_derive!{
+///     synstructure::test_derive!{
 ///         test_derive_example {
 ///             struct A;
 ///         }
@@ -256,17 +233,12 @@ got:
 /// # Example
 ///
 /// ```
-/// extern crate syn;
-/// #[macro_use]
-/// extern crate quote;
-/// #[macro_use]
-/// extern crate synstructure;
-/// extern crate proc_macro2;
+/// # use quote::quote;
 /// # const _IGNORE: &'static str = stringify! {
-/// decl_derive!([Interest] => derive_interest);
+/// synstructure::decl_derive!([Interest] => derive_interest);
 /// # };
 ///
-/// simple_derive! {
+/// synstructure::simple_derive! {
 ///     // This macro implements the `Interesting` method exported by the `aa`
 ///     // crate. It will explicitly add an `extern crate` invocation to import the
 ///     // crate into the expanded context.
@@ -295,7 +267,7 @@ got:
 /// }
 ///
 /// fn main() {
-///     test_derive!{
+///     synstructure::test_derive!{
 ///         derive_interest {
 ///             struct A<T> {
 ///                 x: i32,

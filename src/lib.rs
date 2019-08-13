@@ -18,12 +18,7 @@
 //!
 //! ### Custom Derive
 //! ```
-//! #[macro_use]
-//! extern crate synstructure;
-//! #[macro_use]
-//! extern crate quote;
-//! extern crate proc_macro2;
-//!
+//! # use quote::quote;
 //! fn walkfields_derive(s: synstructure::Structure) -> proc_macro2::TokenStream {
 //!     let body = s.each(|bi| quote!{
 //!         walk(#bi)
@@ -40,14 +35,14 @@
 //!     })
 //! }
 //! # const _IGNORE: &'static str = stringify!(
-//! decl_derive!([WalkFields] => walkfields_derive);
+//! synstructure::decl_derive!([WalkFields] => walkfields_derive);
 //! # );
 //!
 //! /*
 //!  * Test Case
 //!  */
 //! fn main() {
-//!     test_derive! {
+//!     synstructure::test_derive! {
 //!         walkfields_derive {
 //!             enum A<T> {
 //!                 B(i32, T),
@@ -92,12 +87,7 @@
 //!
 //! ### Custom Derive
 //! ```
-//! #[macro_use]
-//! extern crate synstructure;
-//! #[macro_use]
-//! extern crate quote;
-//! extern crate proc_macro2;
-//!
+//! # use quote::quote;
 //! fn interest_derive(mut s: synstructure::Structure) -> proc_macro2::TokenStream {
 //!     let body = s.fold(false, |acc, bi| quote!{
 //!         #acc || synstructure_test_traits::Interest::interesting(#bi)
@@ -115,14 +105,14 @@
 //!     })
 //! }
 //! # const _IGNORE: &'static str = stringify!(
-//! decl_derive!([Interest] => interest_derive);
+//! synstructure::decl_derive!([Interest] => interest_derive);
 //! # );
 //!
 //! /*
 //!  * Test Case
 //!  */
 //! fn main() {
-//!     test_derive!{
+//!     synstructure::test_derive!{
 //!         interest_derive {
 //!             enum A<T> {
 //!                 B(i32, T),
@@ -373,12 +363,8 @@ impl<'a> BindingInfo<'a> {
     ///
     /// # Example
     /// ```
-    /// # #[macro_use] extern crate quote;
-    /// # extern crate synstructure;
-    /// # #[macro_use] extern crate syn;
     /// # use synstructure::*;
-    /// # fn main() {
-    /// let di: syn::DeriveInput = parse_quote! {
+    /// let di: syn::DeriveInput = syn::parse_quote! {
     ///     enum A {
     ///         B{ a: i32, b: i32 },
     ///         C(u32),
@@ -392,7 +378,6 @@ impl<'a> BindingInfo<'a> {
     ///         ref __binding_0
     ///     }.to_string()
     /// );
-    /// # }
     /// ```
     pub fn pat(&self) -> TokenStream {
         let BindingInfo {
@@ -414,13 +399,8 @@ impl<'a> BindingInfo<'a> {
     ///
     /// # Example
     /// ```
-    /// # #[macro_use] extern crate quote;
-    /// # extern crate synstructure;
-    /// # #[macro_use] extern crate syn;
-    /// # extern crate proc_macro2;
     /// # use synstructure::*;
-    /// # fn main() {
-    /// let di: syn::DeriveInput = parse_quote! {
+    /// let di: syn::DeriveInput = syn::parse_quote! {
     ///     struct A<T, U> {
     ///         a: Option<T>,
     ///         b: U,
@@ -432,7 +412,6 @@ impl<'a> BindingInfo<'a> {
     ///     s.variants()[0].bindings()[0].referenced_ty_params(),
     ///     &[&(syn::Ident::new("T", proc_macro2::Span::call_site()))]
     /// );
-    /// # }
     /// ```
     pub fn referenced_ty_params(&self) -> Vec<&'a Ident> {
         fetch_generics(&self.seen_generics, self.generics)
@@ -569,12 +548,8 @@ impl<'a> VariantInfo<'a> {
     ///
     /// # Example
     /// ```
-    /// # #[macro_use] extern crate quote;
-    /// # extern crate synstructure;
-    /// # #[macro_use] extern crate syn;
     /// # use synstructure::*;
-    /// # fn main() {
-    /// let di: syn::DeriveInput = parse_quote! {
+    /// let di: syn::DeriveInput = syn::parse_quote! {
     ///     enum A {
     ///         B(i32, i32),
     ///         C(u32),
@@ -588,7 +563,6 @@ impl<'a> VariantInfo<'a> {
     ///         A::B(ref __binding_0, ref __binding_1,)
     ///     }.to_string()
     /// );
-    /// # }
     /// ```
     pub fn pat(&self) -> TokenStream {
         let mut t = TokenStream::new();
@@ -632,12 +606,8 @@ impl<'a> VariantInfo<'a> {
     ///
     /// # Example
     /// ```
-    /// # #[macro_use] extern crate quote;
-    /// # extern crate synstructure;
-    /// # #[macro_use] extern crate syn;
     /// # use synstructure::*;
-    /// # fn main() {
-    /// let di: syn::DeriveInput = parse_quote! {
+    /// let di: syn::DeriveInput = syn::parse_quote! {
     ///     enum A {
     ///         B(usize, usize),
     ///         C{ v: usize },
@@ -660,7 +630,6 @@ impl<'a> VariantInfo<'a> {
     ///         A::C{ v: 0usize, }
     ///     }.to_string()
     /// );
-    /// # }
     /// ```
     pub fn construct<F, T>(&self, mut func: F) -> TokenStream
     where
@@ -705,12 +674,8 @@ impl<'a> VariantInfo<'a> {
     ///
     /// # Example
     /// ```
-    /// # #[macro_use] extern crate quote;
-    /// # extern crate synstructure;
-    /// # #[macro_use] extern crate syn;
     /// # use synstructure::*;
-    /// # fn main() {
-    /// let di: syn::DeriveInput = parse_quote! {
+    /// let di: syn::DeriveInput = syn::parse_quote! {
     ///     enum A {
     ///         B(i32, i32),
     ///         C(u32),
@@ -728,7 +693,6 @@ impl<'a> VariantInfo<'a> {
     ///         }
     ///     }.to_string()
     /// );
-    /// # }
     /// ```
     pub fn each<F, R>(&self, mut f: F) -> TokenStream
     where
@@ -754,12 +718,8 @@ impl<'a> VariantInfo<'a> {
     ///
     /// # Example
     /// ```
-    /// # #[macro_use] extern crate quote;
-    /// # extern crate synstructure;
-    /// # #[macro_use] extern crate syn;
     /// # use synstructure::*;
-    /// # fn main() {
-    /// let di: syn::DeriveInput = parse_quote! {
+    /// let di: syn::DeriveInput = syn::parse_quote! {
     ///     enum A {
     ///         B(i32, i32),
     ///         C(u32),
@@ -776,7 +736,6 @@ impl<'a> VariantInfo<'a> {
     ///         }
     ///     }.to_string()
     /// );
-    /// # }
     /// ```
     pub fn fold<F, I, R>(&self, init: I, mut f: F) -> TokenStream
     where
@@ -803,13 +762,8 @@ impl<'a> VariantInfo<'a> {
     ///
     /// # Example
     /// ```
-    /// # #[macro_use] extern crate quote;
-    /// # extern crate synstructure;
-    /// # #[macro_use] extern crate syn;
-    /// # extern crate proc_macro2;
     /// # use synstructure::*;
-    /// # fn main() {
-    /// let di: syn::DeriveInput = parse_quote! {
+    /// let di: syn::DeriveInput = syn::parse_quote! {
     ///     enum A {
     ///         B{ a: i32, b: i32 },
     ///         C{ a: u32 },
@@ -833,7 +787,6 @@ impl<'a> VariantInfo<'a> {
     ///         }
     ///     }.to_string()
     /// );
-    /// # }
     /// ```
     pub fn filter<F>(&mut self, f: F) -> &mut Self
     where
@@ -863,12 +816,8 @@ impl<'a> VariantInfo<'a> {
     ///
     /// # Example
     /// ```
-    /// # #[macro_use] extern crate quote;
-    /// # extern crate synstructure;
-    /// # #[macro_use] extern crate syn;
     /// # use synstructure::*;
-    /// # fn main() {
-    /// let di: syn::DeriveInput = parse_quote! {
+    /// let di: syn::DeriveInput = syn::parse_quote! {
     ///     enum A {
     ///         B(i32, i32),
     ///         C(u32),
@@ -891,7 +840,6 @@ impl<'a> VariantInfo<'a> {
     ///         }
     ///     }.to_string()
     /// );
-    /// # }
     /// ```
     pub fn bind_with<F>(&mut self, mut f: F) -> &mut Self
     where
@@ -914,12 +862,8 @@ impl<'a> VariantInfo<'a> {
     ///
     /// # Example
     /// ```
-    /// # #[macro_use] extern crate quote;
-    /// # extern crate synstructure;
-    /// # #[macro_use] extern crate syn;
     /// # use synstructure::*;
-    /// # fn main() {
-    /// let di: syn::DeriveInput = parse_quote! {
+    /// let di: syn::DeriveInput = syn::parse_quote! {
     ///     enum A {
     ///         B{ a: i32, b: i32 },
     ///         C{ a: u32 },
@@ -942,7 +886,6 @@ impl<'a> VariantInfo<'a> {
     ///         }
     ///     }.to_string()
     /// );
-    /// # }
     /// ```
     pub fn binding_name<F>(&mut self, mut f: F) -> &mut Self
     where
@@ -965,13 +908,8 @@ impl<'a> VariantInfo<'a> {
     ///
     /// # Example
     /// ```
-    /// # #[macro_use] extern crate quote;
-    /// # extern crate synstructure;
-    /// # #[macro_use] extern crate syn;
-    /// # extern crate proc_macro2;
     /// # use synstructure::*;
-    /// # fn main() {
-    /// let di: syn::DeriveInput = parse_quote! {
+    /// let di: syn::DeriveInput = syn::parse_quote! {
     ///     struct A<T, U> {
     ///         a: Option<T>,
     ///         b: U,
@@ -983,7 +921,6 @@ impl<'a> VariantInfo<'a> {
     ///     s.variants()[0].bindings()[0].referenced_ty_params(),
     ///     &[&(syn::Ident::new("T", proc_macro2::Span::call_site()))]
     /// );
-    /// # }
     /// ```
     pub fn referenced_ty_params(&self) -> Vec<&'a Ident> {
         let mut flags = Vec::new();
@@ -1108,12 +1045,8 @@ impl<'a> Structure<'a> {
     ///
     /// # Example
     /// ```
-    /// # #[macro_use] extern crate quote;
-    /// # extern crate synstructure;
-    /// # #[macro_use] extern crate syn;
     /// # use synstructure::*;
-    /// # fn main() {
-    /// let di: syn::DeriveInput = parse_quote! {
+    /// let di: syn::DeriveInput = syn::parse_quote! {
     ///     enum A {
     ///         B(i32, i32),
     ///         C(u32),
@@ -1134,7 +1067,6 @@ impl<'a> Structure<'a> {
     ///         }
     ///     }.to_string()
     /// );
-    /// # }
     /// ```
     pub fn each<F, R>(&self, mut f: F) -> TokenStream
     where
@@ -1162,12 +1094,8 @@ impl<'a> Structure<'a> {
     ///
     /// # Example
     /// ```
-    /// # #[macro_use] extern crate quote;
-    /// # extern crate synstructure;
-    /// # #[macro_use] extern crate syn;
     /// # use synstructure::*;
-    /// # fn main() {
-    /// let di: syn::DeriveInput = parse_quote! {
+    /// let di: syn::DeriveInput = syn::parse_quote! {
     ///     enum A {
     ///         B(i32, i32),
     ///         C(u32),
@@ -1187,7 +1115,6 @@ impl<'a> Structure<'a> {
     ///         }
     ///     }.to_string()
     /// );
-    /// # }
     /// ```
     pub fn fold<F, I, R>(&self, init: I, mut f: F) -> TokenStream
     where
@@ -1214,12 +1141,8 @@ impl<'a> Structure<'a> {
     ///
     /// # Example
     /// ```
-    /// # #[macro_use] extern crate quote;
-    /// # extern crate synstructure;
-    /// # #[macro_use] extern crate syn;
     /// # use synstructure::*;
-    /// # fn main() {
-    /// let di: syn::DeriveInput = parse_quote! {
+    /// let di: syn::DeriveInput = syn::parse_quote! {
     ///     enum A {
     ///         B(i32, i32),
     ///         C(u32),
@@ -1242,7 +1165,6 @@ impl<'a> Structure<'a> {
     ///         }
     ///     }.to_string()
     /// );
-    /// # }
     /// ```
     pub fn each_variant<F, R>(&self, mut f: F) -> TokenStream
     where
@@ -1272,13 +1194,8 @@ impl<'a> Structure<'a> {
     ///
     /// # Example
     /// ```
-    /// # #[macro_use] extern crate quote;
-    /// # extern crate synstructure;
-    /// # #[macro_use] extern crate syn;
-    /// # extern crate proc_macro2;
     /// # use synstructure::*;
-    /// # fn main() {
-    /// let di: syn::DeriveInput = parse_quote! {
+    /// let di: syn::DeriveInput = syn::parse_quote! {
     ///     enum A {
     ///         B{ a: i32, b: i32 },
     ///         C{ a: u32 },
@@ -1302,7 +1219,6 @@ impl<'a> Structure<'a> {
     ///         }
     ///     }.to_string()
     /// );
-    /// # }
     /// ```
     pub fn filter<F>(&mut self, mut f: F) -> &mut Self
     where
@@ -1320,13 +1236,8 @@ impl<'a> Structure<'a> {
     ///
     /// # Example
     /// ```
-    /// # #![recursion_limit="128"]
-    /// # #[macro_use] extern crate quote;
-    /// # extern crate synstructure;
-    /// # #[macro_use] extern crate syn;
     /// # use synstructure::*;
-    /// # fn main() {
-    /// let di: syn::DeriveInput = parse_quote! {
+    /// let di: syn::DeriveInput = syn::parse_quote! {
     ///     enum A<T, U> {
     ///         B(T),
     ///         C(Option<U>),
@@ -1335,7 +1246,7 @@ impl<'a> Structure<'a> {
     /// let mut s = Structure::new(&di);
     ///
     /// // Add an additional where predicate.
-    /// s.add_where_predicate(parse_quote!(T: std::fmt::Display));
+    /// s.add_where_predicate(syn::parse_quote!(T: std::fmt::Display));
     ///
     /// assert_eq!(
     ///     s.bound_impl(quote!(krate::Trait), quote!{
@@ -1357,7 +1268,6 @@ impl<'a> Structure<'a> {
     ///         };
     ///     }.to_string()
     /// );
-    /// # }
     /// ```
     pub fn add_where_predicate(&mut self, pred: WherePredicate) -> &mut Self {
         self.extra_predicates.push(pred);
@@ -1372,12 +1282,8 @@ impl<'a> Structure<'a> {
     ///
     /// # Example
     /// ```
-    /// # #[macro_use] extern crate quote;
-    /// # extern crate synstructure;
-    /// # #[macro_use] extern crate syn;
     /// # use synstructure::*;
-    /// # fn main() {
-    /// let di: syn::DeriveInput = parse_quote! {
+    /// let di: syn::DeriveInput = syn::parse_quote! {
     ///     enum A<T, U> {
     ///         B(T),
     ///         C(Option<U>),
@@ -1406,7 +1312,6 @@ impl<'a> Structure<'a> {
     ///         };
     ///     }.to_string()
     /// );
-    /// # }
     /// ```
     pub fn add_bounds(&mut self, mode: AddBounds) -> &mut Self {
         self.add_bounds = mode;
@@ -1424,12 +1329,8 @@ impl<'a> Structure<'a> {
     ///
     /// # Example
     /// ```
-    /// # #[macro_use] extern crate quote;
-    /// # extern crate synstructure;
-    /// # #[macro_use] extern crate syn;
     /// # use synstructure::*;
-    /// # fn main() {
-    /// let di: syn::DeriveInput = parse_quote! {
+    /// let di: syn::DeriveInput = syn::parse_quote! {
     ///     enum A {
     ///         B(i32, i32),
     ///         C(u32),
@@ -1450,7 +1351,6 @@ impl<'a> Structure<'a> {
     ///         _ => {}
     ///     }.to_string()
     /// );
-    /// # }
     /// ```
     pub fn filter_variants<F>(&mut self, f: F) -> &mut Self
     where
@@ -1480,12 +1380,8 @@ impl<'a> Structure<'a> {
     ///
     /// # Example
     /// ```
-    /// # #[macro_use] extern crate quote;
-    /// # extern crate synstructure;
-    /// # #[macro_use] extern crate syn;
     /// # use synstructure::*;
-    /// # fn main() {
-    /// let di: syn::DeriveInput = parse_quote! {
+    /// let di: syn::DeriveInput = syn::parse_quote! {
     ///     enum A {
     ///         B(i32, i32),
     ///         C(u32),
@@ -1508,7 +1404,6 @@ impl<'a> Structure<'a> {
     ///         }
     ///     }.to_string()
     /// );
-    /// # }
     /// ```
     pub fn bind_with<F>(&mut self, mut f: F) -> &mut Self
     where
@@ -1531,12 +1426,8 @@ impl<'a> Structure<'a> {
     ///
     /// # Example
     /// ```
-    /// # #[macro_use] extern crate quote;
-    /// # extern crate synstructure;
-    /// # #[macro_use] extern crate syn;
     /// # use synstructure::*;
-    /// # fn main() {
-    /// let di: syn::DeriveInput = parse_quote! {
+    /// let di: syn::DeriveInput = syn::parse_quote! {
     ///     enum A {
     ///         B{ a: i32, b: i32 },
     ///         C{ a: u32 },
@@ -1559,7 +1450,6 @@ impl<'a> Structure<'a> {
     ///         }
     ///     }.to_string()
     /// );
-    /// # }
     /// ```
     pub fn binding_name<F>(&mut self, mut f: F) -> &mut Self
     where
@@ -1582,13 +1472,8 @@ impl<'a> Structure<'a> {
     ///
     /// # Example
     /// ```
-    /// # #[macro_use] extern crate quote;
-    /// # extern crate synstructure;
-    /// # #[macro_use] extern crate syn;
-    /// # extern crate proc_macro2;
     /// # use synstructure::*;
-    /// # fn main() {
-    /// let di: syn::DeriveInput = parse_quote! {
+    /// let di: syn::DeriveInput = syn::parse_quote! {
     ///     enum A<T, U> {
     ///         B(T, i32),
     ///         C(Option<U>),
@@ -1602,7 +1487,6 @@ impl<'a> Structure<'a> {
     ///     s.referenced_ty_params(),
     ///     &[&(syn::Ident::new("T", proc_macro2::Span::call_site()))]
     /// );
-    /// # }
     /// ```
     pub fn referenced_ty_params(&self) -> Vec<&'a Ident> {
         let mut flags = Vec::new();
@@ -1619,20 +1503,15 @@ impl<'a> Structure<'a> {
     ///
     /// # Example
     /// ```
-    /// # #![recursion_limit="128"]
-    /// # #[macro_use] extern crate quote;
-    /// # extern crate synstructure;
-    /// # #[macro_use] extern crate syn;
     /// # use synstructure::*;
-    /// # fn main() {
-    /// let di: syn::DeriveInput = parse_quote! {
+    /// let di: syn::DeriveInput = syn::parse_quote! {
     ///     enum A<T, U> {
     ///         B(T),
     ///         C(Option<U>),
     ///     }
     /// };
     /// let mut s = Structure::new(&di);
-    /// let generic: syn::GenericParam = parse_quote!(X: krate::AnotherTrait);
+    /// let generic: syn::GenericParam = syn::parse_quote!(X: krate::AnotherTrait);
     ///
     /// assert_eq!(
     ///     s.add_impl_generic(generic)
@@ -1656,7 +1535,6 @@ impl<'a> Structure<'a> {
     ///         };
     ///     }.to_string()
     /// );
-    /// # }
     /// ```
     pub fn add_impl_generic(&mut self, param: GenericParam) -> &mut Self {
         self.extra_impl.push(param);
@@ -1769,12 +1647,8 @@ impl<'a> Structure<'a> {
     ///
     /// # Example
     /// ```
-    /// # #[macro_use] extern crate quote;
-    /// # extern crate synstructure;
-    /// # #[macro_use] extern crate syn;
     /// # use synstructure::*;
-    /// # fn main() {
-    /// let di: syn::DeriveInput = parse_quote! {
+    /// let di: syn::DeriveInput = syn::parse_quote! {
     ///     enum A<T, U> {
     ///         B(T),
     ///         C(Option<U>),
@@ -1802,7 +1676,6 @@ impl<'a> Structure<'a> {
     ///         };
     ///     }.to_string()
     /// );
-    /// # }
     /// ```
     pub fn bound_impl<P: ToTokens, B: ToTokens>(&self, path: P, body: B) -> TokenStream {
         self.impl_internal(
@@ -1844,12 +1717,8 @@ impl<'a> Structure<'a> {
     ///
     /// # Example
     /// ```
-    /// # #[macro_use] extern crate quote;
-    /// # extern crate synstructure;
-    /// # #[macro_use] extern crate syn;
     /// # use synstructure::*;
-    /// # fn main() {
-    /// let di: syn::DeriveInput = parse_quote! {
+    /// let di: syn::DeriveInput = syn::parse_quote! {
     ///     enum A<T, U> {
     ///         B(T),
     ///         C(Option<U>),
@@ -1877,7 +1746,6 @@ impl<'a> Structure<'a> {
     ///         };
     ///     }.to_string()
     /// );
-    /// # }
     /// ```
     pub fn unsafe_bound_impl<P: ToTokens, B: ToTokens>(&self, path: P, body: B) -> TokenStream {
         self.impl_internal(
@@ -1912,12 +1780,8 @@ impl<'a> Structure<'a> {
     ///
     /// # Example
     /// ```
-    /// # #[macro_use] extern crate quote;
-    /// # extern crate synstructure;
-    /// # #[macro_use] extern crate syn;
     /// # use synstructure::*;
-    /// # fn main() {
-    /// let di: syn::DeriveInput = parse_quote! {
+    /// let di: syn::DeriveInput = syn::parse_quote! {
     ///     enum A<T, U> {
     ///         B(T),
     ///         C(Option<U>),
@@ -1942,7 +1806,6 @@ impl<'a> Structure<'a> {
     ///         };
     ///     }.to_string()
     /// );
-    /// # }
     /// ```
     pub fn unbound_impl<P: ToTokens, B: ToTokens>(&self, path: P, body: B) -> TokenStream {
         self.impl_internal(
@@ -1977,12 +1840,8 @@ impl<'a> Structure<'a> {
     ///
     /// # Example
     /// ```
-    /// # #[macro_use] extern crate quote;
-    /// # extern crate synstructure;
-    /// # #[macro_use] extern crate syn;
     /// # use synstructure::*;
-    /// # fn main() {
-    /// let di: syn::DeriveInput = parse_quote! {
+    /// let di: syn::DeriveInput = syn::parse_quote! {
     ///     enum A<T, U> {
     ///         B(T),
     ///         C(Option<U>),
@@ -2007,7 +1866,6 @@ impl<'a> Structure<'a> {
     ///         };
     ///     }.to_string()
     /// );
-    /// # }
     /// ```
     #[deprecated]
     pub fn unsafe_unbound_impl<P: ToTokens, B: ToTokens>(&self, path: P, body: B) -> TokenStream {
@@ -2172,13 +2030,8 @@ impl<'a> Structure<'a> {
     /// # Example Usage
     ///
     /// ```
-    /// # #![recursion_limit="128"]
-    /// # #[macro_use] extern crate quote;
-    /// # extern crate synstructure;
-    /// # #[macro_use] extern crate syn;
     /// # use synstructure::*;
-    /// # fn main() {
-    /// let di: syn::DeriveInput = parse_quote! {
+    /// let di: syn::DeriveInput = syn::parse_quote! {
     ///     enum A<T, U> {
     ///         B(T),
     ///         C(Option<U>),
@@ -2272,7 +2125,6 @@ impl<'a> Structure<'a> {
     ///         };
     ///     }.to_string()
     /// );
-    /// # }
     /// ```
     ///
     /// Use `add_bounds` to change which bounds are generated.
@@ -2394,9 +2246,7 @@ impl<'a> Structure<'a> {
 /// # Example
 ///
 /// ```
-/// # extern crate synstructure;
-/// # #[macro_use] extern crate quote;
-/// # fn main() {
+/// # use quote::quote;
 /// assert_eq!(
 ///     synstructure::unpretty_print(quote! {
 ///         #[allow(non_upper_case_globals)]
@@ -2429,7 +2279,6 @@ impl<'a> Structure<'a> {
 /// ;
 /// "
 /// )
-/// # }
 /// ```
 pub fn unpretty_print<T: std::fmt::Display>(ts: T) -> String {
     let mut res = String::new();
