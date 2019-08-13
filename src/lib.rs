@@ -161,32 +161,25 @@
 
 extern crate proc_macro;
 
-#[allow(unused)]
-#[macro_use]
-extern crate quote;
-#[macro_use]
-extern crate syn;
-
-
 use std::collections::HashSet;
 
 use syn::parse::{ParseStream, Parser};
 use syn::visit::{self, Visit};
 use syn::{
-    punctuated, token, Attribute, Data, DeriveInput, Error, Expr, Field, Fields, FieldsNamed,
-    FieldsUnnamed, GenericParam, Generics, Ident, PredicateType, Result, TraitBound, Type,
-    TypeMacro, TypeParamBound, TypePath, WhereClause, WherePredicate,
+    braced, punctuated, token, Attribute, Data, DeriveInput, Error, Expr, Field, Fields,
+    FieldsNamed, FieldsUnnamed, GenericParam, Generics, Ident, PredicateType, Result, Token,
+    TraitBound, Type, TypeMacro, TypeParamBound, TypePath, WhereClause, WherePredicate,
 };
 
+use quote::{quote_spanned, ToTokens};
 // re-export the quote! macro so we can depend on it being around in our macro's
 // implementations.
-use proc_macro2::{TokenStream, TokenTree};
 #[doc(hidden)]
-pub use quote::*;
+pub use quote::quote;
 
 use unicode_xid::UnicodeXID;
 
-use proc_macro2::Span;
+use proc_macro2::{Span, TokenStream, TokenTree};
 
 // NOTE: This module has documentation hidden, as it only exports macros (which
 // always appear in the root of the crate) and helper methods / re-exports used
