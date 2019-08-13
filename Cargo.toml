@@ -1,6 +1,6 @@
 [package]
 name = "synstructure"
-version = "0.11.0"
+version = "0.12.0"
 authors = ["Nika Layzell <nika@thelayzells.com>"]
 
 description = "Helper methods and macros for custom derives"
@@ -16,9 +16,9 @@ include = ["src/**/*", "Cargo.toml", "README.md", "LICENSE"]
 simple-derive = []
 
 [dependencies]
-syn = { version = "0.15", features = ["visit", "extra-traits"] }
-proc-macro2 = "0.4"
-quote = "0.6"
+syn = { version = "1", features = ["visit", "extra-traits"] }
+proc-macro2 = "1"
+quote = "1"
 unicode-xid = "0.1"
 
 [dev-dependencies]
