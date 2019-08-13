@@ -184,7 +184,7 @@ macro_rules! test_derive {
                 $($o)*
             }
 
-            test_derive!($name { $($i)* } expands to { $($o)* } no_build);
+            $crate::test_derive!($name { $($i)* } expands to { $($o)* } no_build);
         }
     };
 
@@ -337,7 +337,7 @@ macro_rules! simple_derive {
     (
         $iname:ident impl $path:path { $($rest:tt)* }
     ) => {
-        simple_derive!(__I [$iname, $path] { $($rest)* } [] []);
+        $crate::simple_derive!(__I [$iname, $path] { $($rest)* } [] []);
     };
 
     // Adding a filter block
@@ -349,7 +349,7 @@ macro_rules! simple_derive {
             $($rest:tt)*
         } [$($done:tt)*] [$($filter:tt)*]
     ) => {
-        simple_derive!(
+        $crate::simple_derive!(
             __I $opt { $($rest)* } [$($done)*] [
                 $($filter)*
                 [
@@ -371,7 +371,7 @@ macro_rules! simple_derive {
             $($rest:tt)*
         } [$($done:tt)*] [$($filter:tt)*]
     ) => {
-        simple_derive!(
+        $crate::simple_derive!(
             __I $opt { $($rest)* } [
                 $($done)*
                 [
@@ -398,7 +398,7 @@ macro_rules! simple_derive {
             $($rest:tt)*
         } [$($done:tt)*] [$($filter:tt)*]
     ) => {
-        simple_derive!(
+        $crate::simple_derive!(
             __I $opt { $($rest)* } [
                 $($done)*
                 [
@@ -425,7 +425,7 @@ macro_rules! simple_derive {
             $($rest:tt)*
         } [$($done:tt)*] [$($filter:tt)*]
     ) => {
-        simple_derive!(
+        $crate::simple_derive!(
             __I $opt { $($rest)* } [
                 $($done)*
                 [
@@ -479,15 +479,15 @@ macro_rules! simple_derive {
             $(
                 let $result = {
                     let mut $st_name = st.clone();
-                    $st_name.bind_with(|_| ::synstructure::BindStyle::$bind_style);
+                    $st_name.bind_with(|_| $crate::BindStyle::$bind_style);
                     let $result = {
                         $body
                     };
-                    quote!{ $($expanded)* }
+                    $crate::quote!{ $($expanded)* }
                 };
             )*
 
-            st.bound_impl(quote!($path), quote!{
+            st.bound_impl($crate::quote!($path), $crate::quote!{
                 $(#$result)*
             })
         }
