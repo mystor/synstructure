@@ -161,7 +161,7 @@ use syn::{
     TraitBound, Type, TypeMacro, TypeParamBound, TypePath, WhereClause, WherePredicate,
 };
 
-use quote::{quote_spanned, ToTokens};
+use quote::{quote_spanned, format_ident, ToTokens};
 // re-export the quote! macro so we can depend on it being around in our macro's
 // implementations.
 #[doc(hidden)]
@@ -408,7 +408,7 @@ impl<'a> BindingInfo<'a> {
     ///
     /// assert_eq!(
     ///     s.variants()[0].bindings()[0].referenced_ty_params(),
-    ///     &[&(syn::Ident::new("T", proc_macro2::Span::call_site()))]
+    ///     &[&quote::format_ident!("T")]
     /// );
     /// ```
     pub fn referenced_ty_params(&self) -> Vec<&'a Ident> {
@@ -501,7 +501,7 @@ impl<'a> VariantInfo<'a> {
                         BindingInfo {
                             // XXX: This has to be call_site to avoid privacy
                             // when deriving on private fields.
-                            binding: Ident::new(&format!("__binding_{}", i), Span::call_site()),
+                            binding: format_ident!("__binding_{}", i),
                             style: BindStyle::Ref,
                             field,
                             generics,
@@ -770,7 +770,7 @@ impl<'a> VariantInfo<'a> {
     /// let mut s = Structure::new(&di);
     ///
     /// s.variants_mut()[0].filter(|bi| {
-    ///     bi.ast().ident == Some(syn::Ident::new("b", proc_macro2::Span::call_site()))
+    ///     bi.ast().ident == Some(quote::format_ident!("b"))
     /// });
     ///
     /// assert_eq!(
@@ -917,7 +917,7 @@ impl<'a> VariantInfo<'a> {
     ///
     /// assert_eq!(
     ///     s.variants()[0].bindings()[0].referenced_ty_params(),
-    ///     &[&(syn::Ident::new("T", proc_macro2::Span::call_site()))]
+    ///     &[&quote::format_ident!("T")]
     /// );
     /// ```
     pub fn referenced_ty_params(&self) -> Vec<&'a Ident> {
@@ -1202,7 +1202,7 @@ impl<'a> Structure<'a> {
     /// let mut s = Structure::new(&di);
     ///
     /// s.filter(|bi| {
-    ///     bi.ast().ident == Some(syn::Ident::new("a", proc_macro2::Span::call_site()))
+    ///     bi.ast().ident == Some(quote::format_ident!("a"))
     /// });
     ///
     /// assert_eq!(
@@ -1483,7 +1483,7 @@ impl<'a> Structure<'a> {
     ///
     /// assert_eq!(
     ///     s.referenced_ty_params(),
-    ///     &[&(syn::Ident::new("T", proc_macro2::Span::call_site()))]
+    ///     &[&quote::format_ident!("T")]
     /// );
     /// ```
     pub fn referenced_ty_params(&self) -> Vec<&'a Ident> {
