@@ -53,9 +53,10 @@ pub use syn::{parse, parse_str, DeriveInput};
 #[macro_export]
 macro_rules! decl_derive {
     // XXX: Switch to using this variant everywhere?
-    ([$derives:ident $($derive_t:tt)*] => $inner:path) => {
+    ([$derives:ident $($derive_t:tt)*] => $(#[$attrs:meta])* $inner:path) => {
         #[proc_macro_derive($derives $($derive_t)*)]
         #[allow(non_snake_case)]
+        $(#[$attrs])*
         pub fn $derives(
             i: $crate::macros::TokenStream
         ) -> $crate::macros::TokenStream {
@@ -104,8 +105,9 @@ macro_rules! decl_derive {
 /// ```
 #[macro_export]
 macro_rules! decl_attribute {
-    ([$attribute:ident] => $inner:path) => {
+    ([$attribute:ident] => $(#[$attrs:meta])* $inner:path) => {
         #[proc_macro_attribute]
+        $(#[$attrs])*
         pub fn $attribute(
             attr: $crate::macros::TokenStream,
             i: $crate::macros::TokenStream,
