@@ -50,13 +50,30 @@ pub use syn::{parse, parse_str, DeriveInput};
 /// decl_derive!([Interesting, attributes(interesting_ignore)] => derive_interesting);
 /// # };
 /// ```
+///
+/// ### Decl Attributes & Doc Comments
+/// ```
+/// # fn main() {}
+/// fn derive_interesting(_input: synstructure::Structure) -> proc_macro2::TokenStream {
+///     quote::quote! { ... }
+/// }
+///
+/// # const _IGNORE: &'static str = stringify! {
+/// decl_derive! {
+///     [Interesting] =>
+///     #[allow(some_lint)]
+///     /// Documentation Comments
+///     derive_interesting
+/// }
+/// # };
+/// ```
 #[macro_export]
 macro_rules! decl_derive {
     // XXX: Switch to using this variant everywhere?
-    ([$derives:ident $($derive_t:tt)*] => $(#[$attrs:meta])* $inner:path) => {
+    ([$derives:ident $($derive_t:tt)*] => $(#[$($attrs:tt)*])* $inner:path) => {
         #[proc_macro_derive($derives $($derive_t)*)]
         #[allow(non_snake_case)]
-        $(#[$attrs])*
+        $(#[$($attrs)*])*
         pub fn $derives(
             i: $crate::macros::TokenStream
         ) -> $crate::macros::TokenStream {
@@ -102,12 +119,11 @@ macro_rules! decl_derive {
 /// decl_attribute!([interesting] => attribute_interesting);
 /// # };
 /// ```
-/// ```
 #[macro_export]
 macro_rules! decl_attribute {
-    ([$attribute:ident] => $(#[$attrs:meta])* $inner:path) => {
+    ([$attribute:ident] => $(#[$($attrs:tt)*])* $inner:path) => {
         #[proc_macro_attribute]
-        $(#[$attrs])*
+        $(#[$($attrs)*])*
         pub fn $attribute(
             attr: $crate::macros::TokenStream,
             i: $crate::macros::TokenStream,
