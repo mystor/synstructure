@@ -42,6 +42,7 @@
 //!  * Test Case
 //!  */
 //! fn main() {
+//! #   #[cfg(feature = "macro")]
 //!     synstructure::test_derive! {
 //!         walkfields_derive {
 //!             enum A<T> {
@@ -112,6 +113,7 @@
 //!  * Test Case
 //!  */
 //! fn main() {
+//! #   #[cfg(feature = "macro")]
 //!     synstructure::test_derive!{
 //!         interest_derive {
 //!             enum A<T> {
@@ -149,6 +151,7 @@
 //! For more example usage, consider investigating the `abomonation_derive` crate,
 //! which makes use of this crate, and is fairly simple.
 
+#[cfg(feature = "macro")]
 extern crate proc_macro;
 
 use std::collections::HashSet;
@@ -174,6 +177,7 @@ use proc_macro2::{Span, TokenStream, TokenTree};
 // NOTE: This module has documentation hidden, as it only exports macros (which
 // always appear in the root of the crate) and helper methods / re-exports used
 // in the implementation of those macros.
+#[cfg(feature = "macro")]
 #[doc(hidden)]
 pub mod macros;
 
@@ -2311,6 +2315,7 @@ fn trim_start_matches(s: &str, c: char) -> &str {
 
 /// Helper trait describing values which may be returned by macro implementation
 /// methods used by this crate's macros.
+#[cfg(feature = "macro")]
 pub trait MacroResult {
     /// Convert this result into a `Result` for further processing / validation.
     fn into_result(self) -> Result<TokenStream>;
@@ -2323,38 +2328,43 @@ pub trait MacroResult {
     fn into_stream(self) -> proc_macro::TokenStream;
 }
 
-impl MacroResult for proc_macro::TokenStream {
-    fn into_result(self) -> Result<TokenStream> {
-        Ok(self.into())
-    }
+#[cfg(feature = "macro")]
+mod macro_result_impl {
+    use super::*;
 
-    fn into_stream(self) -> proc_macro::TokenStream {
-        self
-    }
-}
+    impl MacroResult for proc_macro::TokenStream {
+        fn into_result(self) -> Result<TokenStream> {
+            Ok(self.into())
+        }
 
-impl MacroResult for TokenStream {
-    fn into_result(self) -> Result<TokenStream> {
-        Ok(self)
-    }
-
-    fn into_stream(self) -> proc_macro::TokenStream {
-        self.into()
-    }
-}
-
-impl<T: MacroResult> MacroResult for Result<T> {
-    fn into_result(self) -> Result<TokenStream> {
-        match self {
-            Ok(v) => v.into_result(),
-            Err(err) => Err(err),
+        fn into_stream(self) -> proc_macro::TokenStream {
+            self
         }
     }
 
-    fn into_stream(self) -> proc_macro::TokenStream {
-        match self {
-            Ok(v) => v.into_stream(),
-            Err(err) => err.to_compile_error().into(),
+    impl MacroResult for TokenStream {
+        fn into_result(self) -> Result<TokenStream> {
+            Ok(self)
+        }
+
+        fn into_stream(self) -> proc_macro::TokenStream {
+            self.into()
+        }
+    }
+
+    impl<T: MacroResult> MacroResult for Result<T> {
+        fn into_result(self) -> Result<TokenStream> {
+            match self {
+                Ok(v) => v.into_result(),
+                Err(err) => Err(err),
+            }
+        }
+
+        fn into_stream(self) -> proc_macro::TokenStream {
+            match self {
+                Ok(v) => v.into_stream(),
+                Err(err) => err.to_compile_error().into(),
+            }
         }
     }
 }

@@ -8,7 +8,7 @@ path = "macros.rs"
 proc-macro = true
 
 [dependencies]
-synstructure = { path = "../../" }
+synstructure = { path = "../../", features = ["macro"] }
 syn = "1"
 quote = "1"
 proc-macro2 = "1"

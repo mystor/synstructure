@@ -13,6 +13,10 @@ keywords = ["syn", "macros", "derive", "expand_substructure", "enum"]
 
 include = ["src/**/*", "Cargo.toml", "README.md", "LICENSE"]
 
+[features]
+default = ["macro"]
+macro = []
+
 [dependencies]
 syn = { version = "1", features = ["visit", "extra-traits"] }
 proc-macro2 = "1"
