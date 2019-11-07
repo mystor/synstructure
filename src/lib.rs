@@ -151,7 +151,10 @@
 //! For more example usage, consider investigating the `abomonation_derive` crate,
 //! which makes use of this crate, and is fairly simple.
 
-#[cfg(feature = "macro")]
+#[cfg(all(
+    not(all(target_arch = "wasm32", any(target_os = "unknown", target_os = "wasi"))),
+    feature = "proc-macro"
+))]
 extern crate proc_macro;
 
 use std::collections::HashSet;
@@ -177,7 +180,10 @@ use proc_macro2::{Span, TokenStream, TokenTree};
 // NOTE: This module has documentation hidden, as it only exports macros (which
 // always appear in the root of the crate) and helper methods / re-exports used
 // in the implementation of those macros.
-#[cfg(feature = "macro")]
+#[cfg(all(
+    not(all(target_arch = "wasm32", any(target_os = "unknown", target_os = "wasi"))),
+    feature = "proc-macro"
+))]
 #[doc(hidden)]
 pub mod macros;
 
@@ -2315,7 +2321,10 @@ fn trim_start_matches(s: &str, c: char) -> &str {
 
 /// Helper trait describing values which may be returned by macro implementation
 /// methods used by this crate's macros.
-#[cfg(feature = "macro")]
+#[cfg(all(
+    not(all(target_arch = "wasm32", any(target_os = "unknown", target_os = "wasi"))),
+    feature = "proc-macro"
+))]
 pub trait MacroResult {
     /// Convert this result into a `Result` for further processing / validation.
     fn into_result(self) -> Result<TokenStream>;
@@ -2328,7 +2337,10 @@ pub trait MacroResult {
     fn into_stream(self) -> proc_macro::TokenStream;
 }
 
-#[cfg(feature = "macro")]
+#[cfg(all(
+    not(all(target_arch = "wasm32", any(target_os = "unknown", target_os = "wasi"))),
+    feature = "proc-macro"
+))]
 mod macro_result_impl {
     use super::*;
 
