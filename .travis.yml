@@ -10,6 +10,7 @@ matrix:
 
 script:
   - RUST_BACKTRACE=1 cargo test --all
+  - RUST_BACKTRACE=1 cargo test --no-default-features
 
 notifications:
   email:
