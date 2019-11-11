@@ -3,9 +3,19 @@
 //! declare and test custom derive implementations.
 
 // Re-exports used by the decl_derive! and test_derive!
-pub use proc_macro::TokenStream;
 pub use proc_macro2::TokenStream as TokenStream2;
-pub use syn::{parse, parse_str, DeriveInput};
+pub use syn::{parse_str, DeriveInput};
+
+#[cfg(all(
+    not(all(target_arch = "wasm32", any(target_os = "unknown", target_os = "wasi"))),
+    feature = "proc-macro"
+))]
+pub use proc_macro::TokenStream;
+#[cfg(all(
+    not(all(target_arch = "wasm32", any(target_os = "unknown", target_os = "wasi"))),
+    feature = "proc-macro"
+))]
+pub use syn::parse;
 
 /// The `decl_derive!` macro declares a custom derive wrapper. It will parse the
 /// incoming `TokenStream` into a `synstructure::Structure` object, and pass it
@@ -67,6 +77,13 @@ pub use syn::{parse, parse_str, DeriveInput};
 /// }
 /// # };
 /// ```
+///
+/// *This macro is available if `synstructure` is built with the `"proc-macro"`
+/// feature.*
+#[cfg(all(
+    not(all(target_arch = "wasm32", any(target_os = "unknown", target_os = "wasi"))),
+    feature = "proc-macro"
+))]
 #[macro_export]
 macro_rules! decl_derive {
     // XXX: Switch to using this variant everywhere?
@@ -119,6 +136,13 @@ macro_rules! decl_derive {
 /// decl_attribute!([interesting] => attribute_interesting);
 /// # };
 /// ```
+///
+/// *This macro is available if `synstructure` is built with the `"proc-macro"`
+/// feature.*
+#[cfg(all(
+    not(all(target_arch = "wasm32", any(target_os = "unknown", target_os = "wasi"))),
+    feature = "proc-macro"
+))]
 #[macro_export]
 macro_rules! decl_attribute {
     ([$attribute:ident] => $(#[$($attrs:tt)*])* $inner:path) => {
