@@ -42,7 +42,10 @@
 //!  * Test Case
 //!  */
 //! fn main() {
-//! #   #[cfg(feature = "macro")]
+//! #   #[cfg(all(
+//! #       not(all(target_arch = "wasm32", any(target_os = "unknown", target_os = "wasi"))),
+//! #       feature = "proc-macro"
+//! #   ))]
 //!     synstructure::test_derive! {
 //!         walkfields_derive {
 //!             enum A<T> {
@@ -113,7 +116,10 @@
 //!  * Test Case
 //!  */
 //! fn main() {
-//! #   #[cfg(feature = "macro")]
+//! #   #[cfg(all(
+//! #       not(all(target_arch = "wasm32", any(target_os = "unknown", target_os = "wasi"))),
+//! #       feature = "proc-macro"
+//! #   ))]
 //!     synstructure::test_derive!{
 //!         interest_derive {
 //!             enum A<T> {
