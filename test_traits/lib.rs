@@ -4,10 +4,10 @@
 
 // Used for the WalkFields example in src/lib.rs
 pub trait WalkFields: std::any::Any {
-    fn walk_fields(&self, walk: &mut FnMut(&WalkFields));
+    fn walk_fields(&self, walk: &mut dyn FnMut(&dyn WalkFields));
 }
 impl WalkFields for i32 {
-    fn walk_fields(&self, _walk: &mut FnMut(&WalkFields)) {}
+    fn walk_fields(&self, _walk: &mut dyn FnMut(&dyn WalkFields)) {}
 }
 
 // Used for the Interest example in src/lib.rs
