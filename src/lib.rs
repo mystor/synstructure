@@ -1961,7 +1961,7 @@ impl<'a> Structure<'a> {
 
         if self.underscore_const {
             quote! {
-                const _: () = { #generated }
+                const _: () = { #generated };
             }
         } else {
             let dummy_const: Ident = sanitize_ident(&format!(
