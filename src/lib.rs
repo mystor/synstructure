@@ -2335,7 +2335,7 @@ impl<'a> Structure<'a> {
 ///     }),
 ///     "# [
 ///     allow (
-///         non_upper_case_globals )
+///         non_upper_case_globals)
 ///     ]
 /// const _DERIVE_krate_Trait_FOR_A : (
 ///     )
