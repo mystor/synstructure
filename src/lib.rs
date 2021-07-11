@@ -1961,7 +1961,7 @@ impl<'a> Structure<'a> {
 
         if self.underscore_const {
             quote! {
-                const _: () = { #generated }
+                const _: () = { #generated };
             }
         } else {
             let dummy_const: Ident = sanitize_ident(&format!(
@@ -2335,7 +2335,7 @@ impl<'a> Structure<'a> {
 ///     }),
 ///     "# [
 ///     allow (
-///         non_upper_case_globals )
+///         non_upper_case_globals)
 ///     ]
 /// const _DERIVE_krate_Trait_FOR_A : (
 ///     )
