@@ -209,28 +209,31 @@ macro_rules! test_derive {
 
     ($name:path { $($i:tt)* } expands to { $($o:tt)* } no_build) => {
         {
-            let i = stringify!( $($i)* );
+            let i = ::core::stringify!( $($i)* );
             let parsed = $crate::macros::parse_str::<$crate::macros::DeriveInput>(i)
-                .expect(concat!(
+                .expect(::core::concat!(
                     "Failed to parse input to `#[derive(",
-                    stringify!($name),
+                    ::core::stringify!($name),
                     ")]`",
                 ));
 
             let raw_res = $name($crate::Structure::new(&parsed));
             let res = $crate::MacroResult::into_result(raw_res)
-                .expect(concat!(
+                .expect(::core::concat!(
                     "Procedural macro failed for `#[derive(",
-                    stringify!($name),
+                    ::core::stringify!($name),
                     ")]`",
                 ));
 
-            let expected = stringify!( $($o)* )
+            let expected = ::core::stringify!( $($o)* )
                 .parse::<$crate::macros::TokenStream2>()
                 .expect("output should be a valid TokenStream");
-            let mut expected_toks = $crate::macros::TokenStream2::from(expected);
-            if res.to_string() != expected_toks.to_string() {
-                panic!("\
+            let mut expected_toks = <$crate::macros::TokenStream2
+                as ::core::convert::From<$crate::macros::TokenStream2>>::from(expected);
+            ::core::assert_eq!(
+                <$crate::macros::TokenStream2 as ::std::string::ToString>::to_string(&res),
+                <$crate::macros::TokenStream2 as ::std::string::ToString>::to_string(&expected_toks),
+                "\
 test_derive failed:
 expected:
 ```
@@ -241,10 +244,9 @@ got:
 ```
 {}
 ```\n",
-                    $crate::unpretty_print(&expected_toks),
-                    $crate::unpretty_print(&res),
-                );
-            }
+                $crate::unpretty_print(&expected_toks),
+                $crate::unpretty_print(&res),
+            );
         }
     };
 }
