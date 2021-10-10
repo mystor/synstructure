@@ -95,13 +95,17 @@ macro_rules! decl_derive {
             i: $crate::macros::TokenStream
         ) -> $crate::macros::TokenStream {
             match $crate::macros::parse::<$crate::macros::DeriveInput>(i) {
-                Ok(p) => {
+                ::core::result::Result::Ok(p) => {
                     match $crate::Structure::try_new(&p) {
-                        Ok(s) => $crate::MacroResult::into_stream($inner(s)),
-                        Err(e) => e.to_compile_error().into(),
+                        ::core::result::Result::Ok(s) => $crate::MacroResult::into_stream($inner(s)),
+                        ::core::result::Result::Err(e) => {
+                            ::core::convert::Into::into(e.to_compile_error())
+                        }
                     }
                 }
-                Err(e) => e.to_compile_error().into(),
+                ::core::result::Result::Err(e) => {
+                    ::core::convert::Into::into(e.to_compile_error())
+                }
             }
         }
     };
