@@ -153,11 +153,19 @@ macro_rules! decl_attribute {
             i: $crate::macros::TokenStream,
         ) -> $crate::macros::TokenStream {
             match $crate::macros::parse::<$crate::macros::DeriveInput>(i) {
-                Ok(p) => match $crate::Structure::try_new(&p) {
-                    Ok(s) => $crate::MacroResult::into_stream($inner(attr.into(), s)),
-                    Err(e) => e.to_compile_error().into(),
+                ::core::result::Result::Ok(p) => match $crate::Structure::try_new(&p) {
+                    ::core::result::Result::Ok(s) => {
+                        $crate::MacroResult::into_stream(
+                            $inner(::core::convert::Into::into(attr), s)
+                        )
+                    }
+                    ::core::result::Result::Err(e) => {
+                        ::core::convert::Into::into(e.to_compile_error())
+                    }
                 },
-                Err(e) => e.to_compile_error().into(),
+                ::core::result::Result::Err(e) => {
+                    ::core::convert::Into::into(e.to_compile_error())
+                }
             }
         }
     };
