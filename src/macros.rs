@@ -242,10 +242,10 @@ macro_rules! test_derive {
                 .expect("output should be a valid TokenStream");
             let mut expected_toks = <$crate::macros::TokenStream2
                 as ::core::convert::From<$crate::macros::TokenStream2>>::from(expected);
-            ::core::assert_eq!(
-                <$crate::macros::TokenStream2 as ::std::string::ToString>::to_string(&res),
-                <$crate::macros::TokenStream2 as ::std::string::ToString>::to_string(&expected_toks),
-                "\
+            if <$crate::macros::TokenStream2 as ::std::string::ToString>::to_string(&res)
+                != <$crate::macros::TokenStream2 as ::std::string::ToString>::to_string(&expected_toks)
+            {
+                panic!("\
 test_derive failed:
 expected:
 ```
@@ -256,9 +256,10 @@ got:
 ```
 {}
 ```\n",
-                $crate::unpretty_print(&expected_toks),
-                $crate::unpretty_print(&res),
-            );
+                    $crate::unpretty_print(&expected_toks),
+                    $crate::unpretty_print(&res),
+                );
+            }
         }
     };
 }
