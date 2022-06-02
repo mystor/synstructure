@@ -848,7 +848,7 @@ impl<'a> VariantInfo<'a> {
     where
         F: FnMut(&BindingInfo<'_>) -> bool,
     {
-        // `self` wil hold the bindings where `f` returns `true` and `other` will hold the rest.
+        // `self` will hold the bindings where `f` returns `true` and `other` will hold the rest.
         let mut other = VariantInfo {
             prefix: self.prefix.clone(),
             bindings: vec![],
@@ -1353,6 +1353,8 @@ impl<'a> Structure<'a> {
     where
         F: FnMut(&BindingInfo<'_>) -> bool,
     {
+        // `self` will hold the variants with bindings where `f` returns `true` and `other` will
+        // hold the rest.
         let mut other = Self {
             variants: vec![],
             omitted_variants: self.omitted_variants,
