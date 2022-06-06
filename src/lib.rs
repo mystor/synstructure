@@ -149,6 +149,14 @@
 //! For more example usage, consider investigating the `abomonation_derive` crate,
 //! which makes use of this crate, and is fairly simple.
 
+#![allow(
+    clippy::default_trait_access,
+    clippy::missing_errors_doc,
+    clippy::missing_panics_doc,
+    clippy::must_use_candidate,
+    clippy::needless_pass_by_value
+)]
+
 #[cfg(all(
     not(all(target_arch = "wasm32", any(target_os = "unknown", target_os = "wasi"))),
     feature = "proc-macro"
@@ -182,6 +190,7 @@ use proc_macro2::{Span, TokenStream, TokenTree};
 pub mod macros;
 
 /// Changes how bounds are added
+#[allow(clippy::manual_non_exhaustive)]
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub enum AddBounds {
     /// Add for fields and generics
@@ -238,7 +247,7 @@ fn fetch_generics<'a>(set: &[bool], generics: &'a Generics) -> Vec<&'a Ident> {
     for (&seen, param) in set.iter().zip(generics.params.iter()) {
         if seen {
             if let GenericParam::Type(tparam) = param {
-                tys.push(&tparam.ident)
+                tys.push(&tparam.ident);
             }
         }
     }
@@ -250,7 +259,7 @@ fn sanitize_ident(s: &str) -> Ident {
     let mut res = String::with_capacity(s.len());
     for mut c in s.chars() {
         if !UnicodeXID::is_xid_continue(c) {
-            c = '_'
+            c = '_';
         }
         // Deduplicate consecutive _ characters.
         if res.ends_with('_') && c == '_' {
@@ -439,7 +448,7 @@ pub struct VariantInfo<'a> {
     generics: &'a Generics,
 }
 
-/// Helper function used by the VariantInfo constructor. Walks all of the types
+/// Helper function used by the `VariantInfo` constructor. Walks all of the types
 /// in `field` and returns a list of the type parameters from `ty_params` which
 /// are referenced in the field.
 fn get_ty_params(field: &Field, generics: &Generics) -> Vec<bool> {
@@ -469,7 +478,7 @@ fn get_ty_params(field: &Field, generics: &Generics) -> Vec<bool> {
             for r in &mut self.result {
                 *r = true;
             }
-            visit::visit_type_macro(self, x)
+            visit::visit_type_macro(self, x);
         }
     }
 
@@ -645,7 +654,7 @@ impl<'a> VariantInfo<'a> {
                         func(field, i).to_tokens(t);
                         quote!(,).to_tokens(t);
                     }
-                })
+                });
             }
             Fields::Named(FieldsNamed { named, .. }) => {
                 token::Brace::default().surround(&mut t, |t| {
@@ -655,7 +664,7 @@ impl<'a> VariantInfo<'a> {
                         func(field, i).to_tokens(t);
                         quote!(,).to_tokens(t);
                     }
-                })
+                });
             }
         }
         t
@@ -841,7 +850,7 @@ impl<'a> VariantInfo<'a> {
         F: FnMut(&BindingInfo<'_>) -> BindStyle,
     {
         for binding in &mut self.bindings {
-            binding.style = f(&binding);
+            binding.style = f(binding);
         }
         self
     }
