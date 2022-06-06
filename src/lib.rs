@@ -1497,6 +1497,66 @@ impl<'a> Structure<'a> {
         }
         self
     }
+    /// Iterates all the variants of this `Structure` object and uses a closure to determine if a
+    /// variant should be removed. If the closure returns `true` the variant is removed from the
+    /// structure. If the closure returns `false`, the variant remains in the structure.
+    ///
+    /// All the removed variants are moved to a new `Structure` object which is otherwise identical
+    /// to the current one. To understand the effects of removing a variant from a structure check
+    /// the [`Structure::filter_variant`] documentation.
+    ///
+    /// # Example
+    /// ```
+    /// # use synstructure::*;
+    /// let di: syn::DeriveInput = syn::parse_quote! {
+    ///     enum A {
+    ///         B(i32, i32),
+    ///         C(u32),
+    ///     }
+    /// };
+    ///
+    /// let mut with_c = Structure::new(&di);
+    ///
+    /// let with_b = with_c.drain_filter_variants(|v| v.ast().ident == "B");
+    ///
+    /// assert_eq!(
+    ///     with_c.each(|bi| quote!(println!("{:?}", #bi))).to_string(),
+    ///
+    ///     quote!{
+    ///         A::C(ref __binding_0,) => {
+    ///             { println!("{:?}", __binding_0) }
+    ///         }
+    ///     }.to_string()
+    /// );
+    ///
+    /// assert_eq!(
+    ///     with_b.each(|bi| quote!(println!("{:?}", #bi))).to_string(),
+    ///
+    ///     quote!{
+    ///         A::B(ref __binding_0, ref __binding_1,) => {
+    ///             { println!("{:?}", __binding_0) }
+    ///             { println!("{:?}", __binding_1) }
+    ///         }
+    ///     }.to_string()
+    /// );
+    pub fn drain_filter_variants<F>(&mut self, mut f: F) -> Self
+    where
+        F: FnMut(&VariantInfo<'_>) -> bool,
+    {
+        let mut other = Self {
+            variants: vec![],
+            omitted_variants: self.omitted_variants,
+            underscore_const: self.underscore_const,
+            ast: self.ast,
+            extra_impl: self.extra_impl.clone(),
+            extra_predicates: self.extra_predicates.clone(),
+            add_bounds: self.add_bounds,
+        };
+
+        (other.variants, self.variants) = self.variants.drain(..).partition(&mut f);
+
+        other
+    }
 
     /// Remove the variant at the given index.
     ///
