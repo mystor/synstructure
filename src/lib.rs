@@ -851,7 +851,6 @@ impl<'a> VariantInfo<'a> {
     where
         F: FnMut(&BindingInfo<'_>) -> bool,
     {
-        // `self` will hold the bindings where `f` returns `true` and `other` will hold the rest.
         let mut other = VariantInfo {
             prefix: self.prefix,
             bindings: vec![],
@@ -860,16 +859,7 @@ impl<'a> VariantInfo<'a> {
             original_length: self.original_length,
         };
 
-        // This could be simplified once `Vec::drain_filter` is stabilized.
-        let bindings = std::mem::take(&mut self.bindings);
-
-        for binding in bindings {
-            if f(&binding) {
-                other.bindings.push(binding);
-            } else {
-                self.bindings.push(binding);
-            }
-        }
+        (other.bindings, self.bindings) = self.bindings.drain(..).partition(&mut f);
 
         other
     }
