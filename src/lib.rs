@@ -808,7 +808,8 @@ impl<'a> VariantInfo<'a> {
     /// variant. If the closure returns `false`, the binding remains in the variant.
     ///
     /// All the removed bindings are moved to a new `Variant` object which is otherwise identical
-    /// to the current one.
+    /// to the current one. To understand the effects of removing a binding from a variant check
+    /// the [`Variant::filter`] documentation.
     ///
     /// # Example
     /// ```
@@ -1300,7 +1301,8 @@ impl<'a> Structure<'a> {
     /// structure. If the closure returns `false`, the binding remains in the structure.
     ///
     /// All the removed bindings are moved to a new `Structure` object which is otherwise identical
-    /// to the current one.
+    /// to the current one. To understand the effects of removing a binding from a structure check
+    /// the [`Structure::filter`] documentation.
     ///
     /// # Example
     /// ```
