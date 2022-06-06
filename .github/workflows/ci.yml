@@ -1,0 +1,85 @@
+# based on the configuration used for dtolnay/syn
+
+name: CI
+
+on: [push, pull_request]
+
+env:
+  RUSTFLAGS: -Dwarnings
+
+jobs:
+  test:
+    name: Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: dtolnay/rust-toolchain@nightly
+      - run: cargo test --all --tests
+      - run: cargo test --no-default-features
+
+  build:
+    name: ${{matrix.name || format('Rust {0}', matrix.rust)}}
+    runs-on: ${{matrix.os || 'ubuntu'}}-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        rust: [stable, 1.31.0]
+        include:
+          - rust: nightly
+            name: WebAssembly
+            target: wasm32-unknown-unknown
+          - rust: nightly
+            name: WASI
+            target: wasm32-wasi
+          - rust: stable
+            name: Windows
+            os: windows
+    steps:
+      - uses: actions/checkout@v3
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{matrix.rust}}
+      - if: matrix.target
+        run: rustup target add ${{matrix.target}}
+      - run: cargo check ${{env.target}}
+      - run: cargo check ${{env.target}} --no-default-features
+
+  docs:
+    name: Docs
+    runs-on: ubuntu-latest
+    env:
+      RUSTDOCFLAGS: -Drustdoc::broken_intra_doc_links
+    steps:
+      - uses: actions/checkout@v3
+      - uses: dtolnay/rust-toolchain@nightly
+      - run: cargo test --all --doc
+      - run: cargo doc
+
+  minversions:
+    name: Minimal versions
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: dtolnay/rust-toolchain@nightly
+      - run: cargo update -Z minimal-versions
+      - run: cargo check
+
+  clippy:
+    name: Clippy
+    runs-on: ubuntu-latest
+    if: github.event_name != 'pull_request'
+    steps:
+      - uses: actions/checkout@v3
+      - uses: dtolnay/rust-toolchain@nightly
+        with:
+          components: clippy
+      - run: cargo clippy --tests -- -Dclippy::all -Dclippy::pedantic
+
+  outdated:
+    name: Outdated
+    runs-on: ubuntu-latest
+    if: github.event_name != 'pull_request'
+    steps:
+      - uses: actions/checkout@v3
+      - uses: dtolnay/install@cargo-outdated
+      - run: cargo outdated --exit-code 1
