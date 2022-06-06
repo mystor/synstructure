@@ -803,11 +803,12 @@ impl<'a> VariantInfo<'a> {
         self
     }
 
-    /// Consumes this `Variant` object, creating two new `Variant` objects from it.
+    /// Iterates all the bindings of this `Variant` object and uses a closure to determine if a
+    /// binding should be removed. If the closure returns `true` the binding is removed from the
+    /// variant. If the closure returns `false`, the binding remains in the variant.
     ///
-    /// The predicate passed to partition() can return true, or false. partition() returns a pair,
-    /// an object with the bindings for which it returned true, and another object with the
-    /// bindings for which it returned false.
+    /// All the removed bindings are moved to a new `Variant` object which is otherwise identical
+    /// to the current one.
     ///
     /// # Example
     /// ```
@@ -820,12 +821,14 @@ impl<'a> VariantInfo<'a> {
     /// };
     /// let mut s = Structure::new(&di);
     ///
-    /// let (a, b) = s.variants()[0].clone().partition(|bi| {
+    /// let mut with_b = &mut s.variants_mut()[0];
+    ///
+    /// let with_a = with_b.drain_filter(|bi| {
     ///     bi.ast().ident == Some(quote::format_ident!("a"))
     /// });
     ///
     /// assert_eq!(
-    ///     a.each(|bi| quote!(println!("{:?}", #bi))).to_string(),
+    ///     with_a.each(|bi| quote!(println!("{:?}", #bi))).to_string(),
     ///
     ///     quote!{
     ///         A::B{ a: ref __binding_0, .. } => {
@@ -835,7 +838,7 @@ impl<'a> VariantInfo<'a> {
     /// );
     ///
     /// assert_eq!(
-    ///     b.each(|bi| quote!(println!("{:?}", #bi))).to_string(),
+    ///     with_b.each(|bi| quote!(println!("{:?}", #bi))).to_string(),
     ///
     ///     quote!{
     ///         A::B{ b: ref __binding_1, .. } => {
@@ -844,13 +847,13 @@ impl<'a> VariantInfo<'a> {
     ///     }.to_string()
     /// );
     /// ```
-    pub fn partition<F>(mut self, mut f: F) -> (Self, Self)
+    pub fn drain_filter<F>(&mut self, mut f: F) -> Self
     where
         F: FnMut(&BindingInfo<'_>) -> bool,
     {
         // `self` will hold the bindings where `f` returns `true` and `other` will hold the rest.
         let mut other = VariantInfo {
-            prefix: self.prefix.clone(),
+            prefix: self.prefix,
             bindings: vec![],
             ast: self.ast,
             generics: self.generics,
@@ -858,17 +861,17 @@ impl<'a> VariantInfo<'a> {
         };
 
         // This could be simplified once `Vec::drain_filter` is stabilized.
-        let bindings = std::mem::replace(&mut self.bindings, Vec::default());
+        let bindings = std::mem::take(&mut self.bindings);
 
         for binding in bindings {
             if f(&binding) {
-                self.bindings.push(binding);
-            } else {
                 other.bindings.push(binding);
+            } else {
+                self.bindings.push(binding);
             }
         }
 
-        (self, other)
+        other
     }
 
     /// Remove the binding at the given index.
@@ -1302,11 +1305,12 @@ impl<'a> Structure<'a> {
         self
     }
 
-    /// Consumes this `Struct` object, creating two new `Struct` objects from it.
+    /// Iterates all the bindings of this `Structure` object and uses a closure to determine if a
+    /// binding should be removed. If the closure returns `true` the binding is removed from the
+    /// structure. If the closure returns `false`, the binding remains in the structure.
     ///
-    /// The predicate passed to partition() can return true, or false. partition() returns a pair,
-    /// an object with the bindings for which it returned true, and another object with the
-    /// bindings for which it returned false.
+    /// All the removed bindings are moved to a new `Structure` object which is otherwise identical
+    /// to the current one.
     ///
     /// # Example
     /// ```
@@ -1317,14 +1321,14 @@ impl<'a> Structure<'a> {
     ///         C{ a: u32 },
     ///     }
     /// };
-    /// let mut s = Structure::new(&di);
+    /// let mut with_b = Structure::new(&di);
     ///
-    /// let (a, b) = s.partition(|bi| {
+    /// let with_a = with_b.drain_filter(|bi| {
     ///     bi.ast().ident == Some(quote::format_ident!("a"))
     /// });
     ///
     /// assert_eq!(
-    ///     a.each(|bi| quote!(println!("{:?}", #bi))).to_string(),
+    ///     with_a.each(|bi| quote!(println!("{:?}", #bi))).to_string(),
     ///
     ///     quote!{
     ///         A::B{ a: ref __binding_0, .. } => {
@@ -1337,7 +1341,7 @@ impl<'a> Structure<'a> {
     /// );
     ///
     /// assert_eq!(
-    ///     b.each(|bi| quote!(println!("{:?}", #bi))).to_string(),
+    ///     with_b.each(|bi| quote!(println!("{:?}", #bi))).to_string(),
     ///
     ///     quote!{
     ///         A::B{ b: ref __binding_1, .. } => {
@@ -1349,31 +1353,23 @@ impl<'a> Structure<'a> {
     ///     }.to_string()
     /// );
     /// ```
-    pub fn partition<F>(mut self, mut f: F) -> (Self, Self)
+    pub fn drain_filter<F>(&mut self, mut f: F) -> Self
     where
         F: FnMut(&BindingInfo<'_>) -> bool,
     {
-        // `self` will hold the variants with bindings where `f` returns `true` and `other` will
-        // hold the rest.
-        let mut other = Self {
-            variants: vec![],
+        Self {
+            variants: self
+                .variants
+                .iter_mut()
+                .map(|variant| variant.drain_filter(&mut f))
+                .collect(),
             omitted_variants: self.omitted_variants,
             underscore_const: self.underscore_const,
             ast: self.ast,
             extra_impl: self.extra_impl.clone(),
             extra_predicates: self.extra_predicates.clone(),
             add_bounds: self.add_bounds,
-        };
-
-        let variants = std::mem::replace(&mut self.variants, vec![]);
-
-        for variant in variants {
-            let (self_variant, other_variant) = variant.partition(&mut f);
-            self.variants.push(self_variant);
-            other.variants.push(other_variant);
         }
-
-        (self, other)
     }
 
     /// Specify additional where predicate bounds which should be generated by
