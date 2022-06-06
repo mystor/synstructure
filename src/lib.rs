@@ -2049,8 +2049,8 @@ impl<'a> Structure<'a> {
     /// };
     /// ```
     ///
-    /// The `Structure` may also be confired with the [`underscore_const`] method
-    /// to generate `const _` instead.
+    /// The `Structure` may also be configured with the
+    /// [`Structure::underscore_const`] method to generate `const _` instead.
     ///
     /// ```ignore
     /// const _: () = {
