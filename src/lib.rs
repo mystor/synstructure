@@ -974,21 +974,12 @@ impl<'a> Structure<'a> {
                 })
                 .collect::<Vec<_>>(),
             Data::Struct(data) => {
-                // SAFETY NOTE: Normally putting an `Expr` in static storage
-                // wouldn't be safe, because it could contain `Term` objects
-                // which use thread-local interning. However, this static always
-                // contains the value `None`. Thus, it will never contain any
-                // unsafe values.
-                struct UnsafeMakeSync(Option<(token::Eq, Expr)>);
-                unsafe impl Sync for UnsafeMakeSync {}
-                static NONE_DISCRIMINANT: UnsafeMakeSync = UnsafeMakeSync(None);
-
                 vec![VariantInfo::new(
                     VariantAst {
                         attrs: &ast.attrs,
                         ident: &ast.ident,
                         fields: &data.fields,
-                        discriminant: &NONE_DISCRIMINANT.0,
+                        discriminant: &None,
                     },
                     None,
                     &ast.generics,
