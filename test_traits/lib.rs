@@ -1,5 +1,5 @@
 //! This crate contains a series of traits which are occasionally referred to in
-//! documentation examples. When these examples reference the example_traits
+//! documentation examples. When these examples reference the `example_traits`
 //! crate, they are referencing this crate.
 
 // Used for the WalkFields example in src/lib.rs
