@@ -860,7 +860,9 @@ impl<'a> VariantInfo<'a> {
             original_length: self.original_length,
         };
 
-        (other.bindings, self.bindings) = self.bindings.drain(..).partition(&mut f);
+        let (other_bindings, self_bindings) = self.bindings.drain(..).partition(&mut f);
+        other.bindings = other_bindings;
+        self.bindings = self_bindings;
 
         other
     }
@@ -1553,7 +1555,9 @@ impl<'a> Structure<'a> {
             add_bounds: self.add_bounds,
         };
 
-        (other.variants, self.variants) = self.variants.drain(..).partition(&mut f);
+        let (other_variants, self_variants) = self.variants.drain(..).partition(&mut f);
+        other.variants = other_variants;
+        self.variants = self_variants;
 
         other
     }
