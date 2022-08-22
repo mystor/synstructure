@@ -857,6 +857,7 @@ impl<'a> VariantInfo<'a> {
     ///     }.to_string()
     /// );
     /// ```
+    #[allow(clippy::return_self_not_must_use)]
     pub fn drain_filter<F>(&mut self, mut f: F) -> Self
     where
         F: FnMut(&BindingInfo<'_>) -> bool,
@@ -1347,6 +1348,7 @@ impl<'a> Structure<'a> {
     ///     }.to_string()
     /// );
     /// ```
+    #[allow(clippy::return_self_not_must_use)]
     pub fn drain_filter<F>(&mut self, mut f: F) -> Self
     where
         F: FnMut(&BindingInfo<'_>) -> bool,
@@ -1541,6 +1543,7 @@ impl<'a> Structure<'a> {
     ///         }
     ///     }.to_string()
     /// );
+    #[allow(clippy::return_self_not_must_use)]
     pub fn drain_filter_variants<F>(&mut self, mut f: F) -> Self
     where
         F: FnMut(&VariantInfo<'_>) -> bool,
