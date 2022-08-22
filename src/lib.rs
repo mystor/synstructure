@@ -818,7 +818,7 @@ impl<'a> VariantInfo<'a> {
     ///
     /// All the removed bindings are moved to a new `Variant` object which is otherwise identical
     /// to the current one. To understand the effects of removing a binding from a variant check
-    /// the [`Variant::filter`] documentation.
+    /// the [`VariantInfo::filter`] documentation.
     ///
     /// # Example
     /// ```
@@ -1505,7 +1505,7 @@ impl<'a> Structure<'a> {
     ///
     /// All the removed variants are moved to a new `Structure` object which is otherwise identical
     /// to the current one. To understand the effects of removing a variant from a structure check
-    /// the [`Structure::filter_variant`] documentation.
+    /// the [`Structure::filter_variants`] documentation.
     ///
     /// # Example
     /// ```
