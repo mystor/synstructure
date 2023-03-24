@@ -9,7 +9,7 @@ proc-macro = true
 
 [dependencies]
 synstructure = { path = "../../" }
-syn = "1"
+syn = "2"
 quote = "1"
 proc-macro2 = "1"
 
