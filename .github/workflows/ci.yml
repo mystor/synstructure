@@ -23,7 +23,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        rust: [stable, 1.31.0]
+        rust: [stable, 1.56.1]
         include:
           - rust: nightly
             name: WebAssembly
