@@ -177,8 +177,6 @@ use quote::{format_ident, quote_spanned, ToTokens};
 #[doc(hidden)]
 pub use quote::quote;
 
-use unicode_xid::UnicodeXID;
-
 use proc_macro2::{Span, TokenStream, TokenTree};
 
 // NOTE: This module has documentation hidden, as it only exports macros (which
@@ -250,22 +248,6 @@ fn fetch_generics<'a>(set: &[bool], generics: &'a Generics) -> Vec<&'a Ident> {
         }
     }
     tys
-}
-
-// Internal method for sanitizing an identifier for hygiene purposes.
-fn sanitize_ident(s: &str) -> Ident {
-    let mut res = String::with_capacity(s.len());
-    for mut c in s.chars() {
-        if !UnicodeXID::is_xid_continue(c) {
-            c = '_';
-        }
-        // Deduplicate consecutive _ characters.
-        if res.ends_with('_') && c == '_' {
-            continue;
-        }
-        res.push(c);
-    }
-    Ident::new(&res, Span::call_site())
 }
 
 // Internal method to merge two Generics objects together intelligently.
@@ -1386,7 +1368,6 @@ impl<'a> Structure<'a> {
     ///         fn a() {}
     ///     }).to_string(),
     ///     quote!{
-    ///         #[doc(hidden)]
     ///         const _: () = {
     ///             extern crate krate;
     ///             impl<T, U> krate::Trait for A<T, U>
@@ -1431,7 +1412,6 @@ impl<'a> Structure<'a> {
     ///         fn a() {}
     ///     }).to_string(),
     ///     quote!{
-    ///         #[doc(hidden)]
     ///         const _: () = {
     ///             extern crate krate;
     ///             impl<T, U> krate::Trait for A<T, U>
@@ -1714,7 +1694,6 @@ impl<'a> Structure<'a> {
     ///         }
     ///     ).to_string(),
     ///     quote!{
-    ///         #[doc(hidden)]
     ///         const _: () = {
     ///             extern crate krate;
     ///             impl<T, U, X: krate::AnotherTrait> krate::Trait<X> for A<T, U>
@@ -1809,7 +1788,7 @@ impl<'a> Structure<'a> {
     }
 
     /// This method is a no-op, underscore consts are used by default now.
-    pub fn underscore_const(&mut self, enabled: bool) -> &mut Self {
+    pub fn underscore_const(&mut self, _enabled: bool) -> &mut Self {
         self
     }
 
@@ -1860,7 +1839,6 @@ impl<'a> Structure<'a> {
     ///         fn a() {}
     ///     }).to_string(),
     ///     quote!{
-    ///         #[doc(hidden)]
     ///         const _: () = {
     ///             extern crate krate;
     ///             impl<T, U> krate::Trait for A<T, U>
@@ -1929,7 +1907,6 @@ impl<'a> Structure<'a> {
     ///         fn a() {}
     ///     }).to_string(),
     ///     quote!{
-    ///         #[doc(hidden)]
     ///         const _: () = {
     ///             extern crate krate;
     ///             unsafe impl<T, U> krate::Trait for A<T, U>
@@ -1991,7 +1968,6 @@ impl<'a> Structure<'a> {
     ///         fn a() {}
     ///     }).to_string(),
     ///     quote!{
-    ///         #[doc(hidden)]
     ///         const _: () = {
     ///             extern crate krate;
     ///             impl<T, U> krate::Trait for A<T, U> {
@@ -2050,7 +2026,6 @@ impl<'a> Structure<'a> {
     ///         fn a() {}
     ///     }).to_string(),
     ///     quote!{
-    ///         #[doc(hidden)]
     ///         const _: () = {
     ///             extern crate krate;
     ///             unsafe impl<T, U> krate::Trait for A<T, U> {
@@ -2080,7 +2055,7 @@ impl<'a> Structure<'a> {
         let mode = mode.unwrap_or(self.add_bounds);
         let name = &self.ast.ident;
         let mut gen_clone = self.ast.generics.clone();
-        gen_clone.params.extend(self.extra_impl.clone().into_iter());
+        gen_clone.params.extend(self.extra_impl.iter().cloned());
         let (impl_generics, _, _) = gen_clone.split_for_impl();
         let (_, ty_generics, where_clause) = self.ast.generics.split_for_impl();
 

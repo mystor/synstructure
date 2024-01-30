@@ -18,9 +18,8 @@ default = ["proc-macro"]
 proc-macro = ["proc-macro2/proc-macro", "syn/proc-macro", "quote/proc-macro"]
 
 [dependencies]
-proc-macro2 = { version = "1", default-features = false }
+proc-macro2 = { version = "1.0.60", default-features = false }
 quote = { version = "1", default-features = false }
-unicode-xid = "0.2"
 
 [dependencies.syn]
 version = "2"

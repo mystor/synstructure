@@ -35,7 +35,6 @@ fn test() {
             }
         }
         expands to {
-            #[doc(hidden)]
             const _: () = {
                 extern crate synstructure_test_traits;
                 impl synstructure_test_traits::Interest for A {
