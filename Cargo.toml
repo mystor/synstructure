@@ -18,6 +18,7 @@ default = ["proc-macro"]
 proc-macro = ["proc-macro2/proc-macro", "syn/proc-macro", "quote/proc-macro"]
 
 [dependencies]
+dissimilar = "1.0.9"
 proc-macro2 = { version = "1.0.60", default-features = false }
 quote = { version = "1", default-features = false }
 
