@@ -4,8 +4,10 @@
 
 // Re-exports used by the decl_derive! and test_derive!
 pub use proc_macro2::TokenStream as TokenStream2;
-pub use syn::{parse2, parse_str, DeriveInput};
 pub use quote::quote;
+pub use syn::{parse2, parse_str, DeriveInput};
+
+use dissimilar::Chunk;
 
 #[cfg(all(
     not(all(target_arch = "wasm32", any(target_os = "unknown", target_os = "wasi"))),
@@ -239,24 +241,77 @@ macro_rules! test_derive {
                 ));
 
             let expected_toks = $crate::macros::quote!( $($o)* );
-            if <$crate::macros::TokenStream2 as ::std::string::ToString>::to_string(&res)
-                != <$crate::macros::TokenStream2 as ::std::string::ToString>::to_string(&expected_toks)
-            {
-                panic!("\
-test_derive failed:
-expected:
-```
-{}
-```
+            $crate::macros::assert_eq_streams(expected_toks, res);
+        }
+    };
+}
 
-got:
+#[doc(hidden)]
+pub fn assert_eq_streams(expect: TokenStream2, res: TokenStream2) {
+    fn token_stream_eq(a: TokenStream2, b: TokenStream2) -> bool {
+        if a.clone().into_iter().count() != b.clone().into_iter().count() {
+            return false;
+        }
+
+        a.into_iter()
+            .zip(b.into_iter())
+            .all(|(a, b)| token_tree_eq(&a, &b))
+    }
+
+    fn token_tree_eq(a: &proc_macro2::TokenTree, b: &proc_macro2::TokenTree) -> bool {
+        use proc_macro2::TokenTree::*;
+        match (a, b) {
+            (Group(a), Group(b)) => {
+                a.delimiter() == b.delimiter() && token_stream_eq(a.stream(), b.stream())
+            }
+            (Ident(a), Ident(b)) => format!("{}", a) == format!("{}", b),
+            (Punct(a), Punct(b)) => a.as_char() == b.as_char() && a.spacing() == b.spacing(),
+            (Literal(a), Literal(b)) => format!("{}", a) == format!("{}", b),
+            _ => false,
+        }
+    }
+
+    if !token_stream_eq(expect.clone(), res.clone()) {
+        // NOTE: It may be tempting to want to pretty-print these token streams
+        // (or at least the output one) so that the diff is more readable. See
+        // below for verbatim code that I (github.com/joshlf) tried.
+        // Unfortunately, pretty printing removes some token sequences such as
+        // empty type parameter lists (`<>`), empty where clauses (`where` on
+        // its own with no clauses), etc. This has the effect of making the
+        // diffs wrong since this function performs token-wise comparison, which
+        // cares about these token sequences.
+        //
+        //   let mut expect = expect.to_string();
+        //   let mut res = res.to_string();
+        //   if let (Ok(e), Ok(r)) = (syn::parse_file(&expect), syn::parse_file(&res)) {
+        //       // If we can parse successfully, then pretty-print them, but
+        //       // otherwise just use them unmodified. It will still be correct,
+        //       // just uglier.
+        //       expect = prettyplease::unparse(&e);
+        //       res = prettyplease::unparse(&r);
+        //   }
+
+        let diff = dissimilar::diff(&expect.to_string(), &res.to_string())
+            .into_iter()
+            .map(|chunk| {
+                let (prefix, chunk) = match chunk {
+                    Chunk::Equal(chunk) => (" ", chunk),
+                    Chunk::Delete(chunk) => ("-", chunk),
+                    Chunk::Insert(chunk) => ("+", chunk),
+                };
+                [prefix, chunk, "\n"]
+            })
+            .flatten()
+            .collect::<String>();
+
+        panic!(
+            "\
+test_derive failed:
+diff (expected vs got):
 ```
 {}
 ```\n",
-                    $crate::unpretty_print(&expected_toks),
-                    $crate::unpretty_print(&res),
-                );
-            }
-        }
-    };
+            diff
+        );
+    }
 }
