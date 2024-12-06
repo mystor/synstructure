@@ -1218,16 +1218,53 @@ impl<'a> Structure<'a> {
         F: FnMut(&VariantInfo<'_>) -> R,
         R: ToTokens,
     {
+        self.try_each_variant(|v| Ok(f(v))).unwrap()
+    }
+
+    /// Runs the passed-in function once for each variant, passing in a
+    /// `VariantInfo`. and generating `match` arms which evaluate the returned
+    /// tokens.
+    ///
+    /// This method will ignore variants and not bind fields which are ignored
+    /// through the `filter` and `filter_variant` methods.
+    ///
+    /// The method returns any error produced by the passed-in function.
+    ///
+    /// # Example
+    /// ```
+    /// # use synstructure::*;
+    /// let di: syn::DeriveInput = syn::parse_quote! {
+    ///     enum A {
+    ///         #[foo]
+    ///         B(i32, i32),
+    ///         C(u32),
+    ///     }
+    /// };
+    /// let s = Structure::new(&di);
+    ///
+    /// let r = s.try_each_variant(|v| {
+    ///     for attr in v.ast().attrs {
+    ///         attr.parse_nested_meta(|meta| Err(meta.error("invalid attribute")))?;
+    ///     }
+    ///     Ok(quote!(println!("Hello World")))
+    /// });
+    /// assert!(r.is_err());
+    /// ```
+    pub fn try_each_variant<F, R>(&self, mut f: F) -> Result<TokenStream>
+    where
+        F: FnMut(&VariantInfo<'_>) -> Result<R>,
+        R: ToTokens,
+    {
         let mut t = TokenStream::new();
         for variant in &self.variants {
             let pat = variant.pat();
-            let body = f(variant);
+            let body = f(variant)?;
             quote!(#pat => { #body }).to_tokens(&mut t);
         }
         if self.omitted_variants {
             quote!(_ => {}).to_tokens(&mut t);
         }
-        t
+        Ok(t)
     }
 
     /// Filter the bindings created by this `Structure` object. This has 2 effects:
