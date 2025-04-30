@@ -325,10 +325,10 @@ where
 /// `quote!` macro. It expands to a reference to the matched field.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct BindingInfo<'a> {
-    /// The name which this BindingInfo will bind to.
+    /// The name which this `BindingInfo` will bind to.
     pub binding: Ident,
 
-    /// The type of binding which this BindingInfo will create.
+    /// The type of binding which this `BindingInfo` will create.
     pub style: BindStyle,
 
     field: &'a Field,
@@ -341,7 +341,7 @@ pub struct BindingInfo<'a> {
     index: usize,
 }
 
-impl<'a> ToTokens for BindingInfo<'a> {
+impl ToTokens for BindingInfo<'_> {
     fn to_tokens(&self, tokens: &mut TokenStream) {
         self.binding.to_tokens(tokens);
     }
