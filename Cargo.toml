@@ -3,7 +3,7 @@ name = "synstructure"
 version = "0.13.2"
 authors = ["Nika Layzell <nika@thelayzells.com>"]
 edition = "2018"
-
+rust-version = "1.56.1"
 description = "Helper methods and macros for custom derives"
 documentation = "https://docs.rs/synstructure"
 repository = "https://github.com/mystor/synstructure"
