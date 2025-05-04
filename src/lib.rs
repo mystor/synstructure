@@ -168,8 +168,8 @@ use syn::spanned::Spanned;
 use syn::visit::{self, Visit};
 use syn::{
     braced, punctuated, token, Attribute, Data, DeriveInput, Error, Expr, Field, Fields,
-    FieldsNamed, FieldsUnnamed, GenericParam, Generics, Ident, PredicateType, Result, Token,
-    TraitBound, Type, TypeMacro, TypeParamBound, TypePath, WhereClause, WherePredicate,
+    FieldsNamed, FieldsUnnamed, GenericParam, Generics, Ident, Lifetime, PredicateType, Result,
+    Token, TraitBound, Type, TypeMacro, TypeParamBound, TypePath, WhereClause, WherePredicate,
 };
 
 use quote::{format_ident, quote_spanned, ToTokens};
@@ -451,6 +451,16 @@ fn get_ty_params(field: &Field, generics: &Generics) -> Vec<bool> {
             for (idx, i) in self.generics.params.iter().enumerate() {
                 if let GenericParam::Type(tparam) = i {
                     if tparam.ident == *id {
+                        self.result[idx] = true;
+                    }
+                }
+            }
+        }
+
+        fn visit_lifetime(&mut self, id: &'a Lifetime) {
+            for (idx, i) in self.generics.params.iter().enumerate() {
+                if let GenericParam::Lifetime(lparam) = i {
+                    if lparam.lifetime == *id {
                         self.result[idx] = true;
                     }
                 }
