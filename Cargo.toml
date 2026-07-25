@@ -22,7 +22,7 @@ proc-macro2 = { version = "1.0.60", default-features = false }
 quote = { version = "1", default-features = false }
 
 [dependencies.syn]
-version = "2"
+version = "3"
 default-features = false
 features = ["derive", "parsing", "printing", "clone-impls", "visit", "extra-traits"]
 
