@@ -1751,6 +1751,7 @@ impl<'a> Structure<'a> {
                     predicates: punctuated::Punctuated::new(),
                 });
                 clause.predicates.push(WherePredicate::Type(PredicateType {
+                    attrs: Vec::new(),
                     lifetimes: None,
                     bounded_ty: ty,
                     colon_token: Default::default(),
@@ -1779,6 +1780,7 @@ impl<'a> Structure<'a> {
                     AddBounds::Both | AddBounds::Generics => {
                         for param in binding.referenced_ty_params() {
                             pred(Type::Path(TypePath {
+                                attrs: Vec::new(),
                                 qself: None,
                                 path: (*param).clone().into(),
                             }));
