@@ -257,31 +257,29 @@ fn merge_generics(into: &mut Generics, from: &Generics) -> Result<()> {
     for p in &from.params {
         for op in &into.params {
             match (op, p) {
-                (GenericParam::Type(otp), GenericParam::Type(tp)) => {
-                    // NOTE: This is only OK because syn ignores the span for equality purposes.
-                    if otp.ident == tp.ident {
-                        return Err(Error::new_spanned(
-                            p,
-                            format!(
-                                "Attempted to merge conflicting generic parameters: {} and {}",
-                                quote!(#op),
-                                quote!(#p)
-                            ),
-                        ));
-                    }
+                // NOTE: This is only OK because syn ignores the span for equality purposes.
+                (GenericParam::Type(otp), GenericParam::Type(tp)) if otp.ident == tp.ident => {
+                    return Err(Error::new_spanned(
+                        p,
+                        format!(
+                            "Attempted to merge conflicting generic parameters: {} and {}",
+                            quote!(#op),
+                            quote!(#p)
+                        ),
+                    ));
                 }
-                (GenericParam::Lifetime(olp), GenericParam::Lifetime(lp)) => {
-                    // NOTE: This is only OK because syn ignores the span for equality purposes.
-                    if olp.lifetime == lp.lifetime {
-                        return Err(Error::new_spanned(
-                            p,
-                            format!(
-                                "Attempted to merge conflicting generic parameters: {} and {}",
-                                quote!(#op),
-                                quote!(#p)
-                            ),
-                        ));
-                    }
+                // NOTE: This is only OK because syn ignores the span for equality purposes.
+                (GenericParam::Lifetime(olp), GenericParam::Lifetime(lp))
+                    if olp.lifetime == lp.lifetime =>
+                {
+                    return Err(Error::new_spanned(
+                        p,
+                        format!(
+                            "Attempted to merge conflicting generic parameters: {} and {}",
+                            quote!(#op),
+                            quote!(#p)
+                        ),
+                    ));
                 }
                 // We don't support merging Const parameters, because that wouldn't make much sense.
                 _ => (),
@@ -460,9 +458,7 @@ fn get_ty_params(field: &Field, generics: &Generics) -> Vec<bool> {
         fn visit_type_macro(&mut self, x: &'a TypeMacro) {
             // If we see a type_mac declaration, then we can't know what type parameters
             // it might be binding, so we presume it binds all of them.
-            for r in &mut self.result {
-                *r = true;
-            }
+            self.result.fill(true);
             visit::visit_type_macro(self, x);
         }
     }
